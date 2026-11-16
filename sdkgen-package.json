@@ -1,0 +1,18 @@
+{
+  "sdkgen": {
+    "package": 1
+  },
+  "name": "@voxgig/sdkgen-validpack",
+  "version": "0.0.1",
+  "engines": {
+    "sdkgen": ">=4.44.0"
+  },
+  "provides": {
+    "target": [
+      "ts-seed"
+    ]
+  },
+  "parity": {
+    "ts-seed": "CONSUMER"
+  }
+}

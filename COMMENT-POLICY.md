@@ -17,8 +17,9 @@ commented-out code. These rules apply to authored code in every language.
 ## Automated enforcement
 
 `make comments` runs `tools/comment-gate.cjs`. `make comments-test` runs its
-positive and negative tests, including the repository gate. CI runs both on
-pushes and pull requests. `make hooks` installs the tracked pre-push hook;
+positive and negative tests, including the repository gate. `npm test` runs
+the gate. No CI runs here yet: the workflow that would run both is in
+[`patch/`](patch/README.md). `make hooks` installs the tracked pre-push hook;
 Node.js and Git are required, and a missing Node.js fails the hook.
 
 The automated scope covers `.ts`, `.go`, `.rs`, `.aon`, and `.aontu`, including

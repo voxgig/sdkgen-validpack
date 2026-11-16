@@ -1,0 +1,473 @@
+openapi: 3.0.0
+info:
+  title: Bookshop API
+  version: 1.0.0
+  description: >
+    Written for this suite. Each schema holds the constraints the ts-seed
+    target says it honours, so that a generated record is checked against all
+    of them.
+
+servers:
+  - url: http://localhost:8911
+
+paths:
+  /author:
+    get:
+      summary: List authors
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Author'
+                  total:
+                    type: integer
+    post:
+      summary: Create author
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Author'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+  /author/{author_id}:
+    get:
+      summary: Get author
+      parameters:
+        - name: author_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+    put:
+      summary: Update author
+      parameters:
+        - name: author_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Author'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Author'
+    delete:
+      summary: Delete author
+      parameters:
+        - name: author_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+  /book:
+    get:
+      summary: List books
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Book'
+    post:
+      summary: Create book
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+  /book/{book_id}:
+    get:
+      summary: Get book
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    put:
+      summary: Update book
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Book'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Book'
+    delete:
+      summary: Delete book
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+  /book/{book_id}/review:
+    get:
+      summary: List reviews of a book
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+    post:
+      summary: Create review
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Review'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+  /book/{book_id}/review/{review_id}:
+    get:
+      summary: Get review
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: review_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+    delete:
+      summary: Delete review
+      parameters:
+        - name: book_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: review_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted
+  /shelf:
+    get:
+      summary: List shelves
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Shelf'
+  /shelf/{shelf_id}:
+    get:
+      summary: Get shelf
+      parameters:
+        - name: shelf_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shelf'
+
+components:
+  schemas:
+    Author:
+      type: object
+      required: [id, name, email, country]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 3
+          maxLength: 60
+        email:
+          type: string
+          format: email
+        country:
+          type: string
+          pattern: '^[A-Z]{2}$'
+        born:
+          type: string
+          format: date
+        website:
+          type: string
+          format: uri
+        active:
+          type: boolean
+        bio:
+          type: string
+          maxLength: 80
+          nullable: true
+    Item:
+      type: object
+      required: [id, title]
+      properties:
+        id:
+          type: string
+          pattern: '^BK-[0-9]{6}$'
+        title:
+          type: string
+          minLength: 5
+          maxLength: 40
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    Book:
+      allOf:
+        - $ref: '#/components/schemas/Item'
+        - type: object
+          required: [isbn, author_id, price, format]
+          properties:
+            isbn:
+              type: string
+              pattern: '^97[89]-[0-9]{10}$'
+            author_id:
+              type: string
+              format: uuid
+            price:
+              type: number
+              minimum: 0.5
+              maximum: 250
+              multipleOf: 0.01
+            pages:
+              type: integer
+              minimum: 1
+              maximum: 1500
+            format:
+              type: string
+              enum: [hardback, paperback, ebook, audio]
+            edition:
+              type: integer
+              enum: [1, 2, 3]
+            language:
+              type: string
+              minLength: 2
+              maxLength: 2
+              pattern: '^[a-z]{2}$'
+            published:
+              type: string
+              format: date
+            rating:
+              type: number
+              minimum: 0
+              exclusiveMinimum: true
+              maximum: 5
+            tags:
+              type: array
+              minItems: 1
+              maxItems: 4
+              uniqueItems: true
+              items:
+                type: string
+                minLength: 2
+                maxLength: 12
+            dimensions:
+              $ref: '#/components/schemas/Dimensions'
+            stock:
+              type: object
+              additionalProperties:
+                type: integer
+                minimum: 0
+                maximum: 99
+    Dimensions:
+      type: object
+      additionalProperties: false
+      required: [width, height, unit]
+      properties:
+        width:
+          type: number
+          minimum: 5
+          maximum: 40
+        height:
+          type: number
+          minimum: 5
+          maximum: 60
+        unit:
+          type: string
+          enum: [cm, in]
+    Review:
+      type: object
+      required: [id, rating, body, reviewer]
+      properties:
+        id:
+          type: integer
+          minimum: 1000
+        book_id:
+          type: string
+          pattern: '^BK-[0-9]{6}$'
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        body:
+          type: string
+          minLength: 20
+          maxLength: 200
+        helpful:
+          type: integer
+          minimum: 0
+          maximum: 50
+          multipleOf: 5
+        posted_at:
+          type: string
+          format: date-time
+        verdict:
+          oneOf:
+            - type: string
+              enum: [recommend, neutral, avoid]
+            - type: integer
+        reviewer:
+          $ref: '#/components/schemas/Reviewer'
+        replies:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Review'
+    Reviewer:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        secret:
+          type: string
+          writeOnly: true
+    Shelf:
+      type: object
+      required: [id, label, capacity]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+          pattern: '^[A-Z][0-9]{1,2}$'
+        capacity:
+          type: integer
+          minimum: 10
+          maximum: 500
+          exclusiveMaximum: true
+        temperature:
+          type: number
+          minimum: -5
+          maximum: 30
+        opened:
+          type: string
+          format: date-time
+        host:
+          type: string
+          format: hostname
+        address:
+          type: string
+          format: ipv4
+        token:
+          type: string
+          format: byte
