@@ -1,0 +1,188 @@
+From 622471b5ca26cf9574951c28eb37ac4e231fe61a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 16 Nov 2026 15:47:07 +0000
+Subject: [PATCH] ci: build and test the pack on every change, and once a day
+
+Adds `.github/workflows/build.yml`. On a push to main, a pull request, a
+daily schedule and on demand, it installs, then runs `npm test` (which
+builds the components, runs the comment gate and the dependency gate,
+and then the suite), the comment gate's own tests, and sdkgen's package
+check.
+
+Two lanes: the dependencies a consumer resolves today, and the floor
+`peerDependencies` declares, read from the manifest. The schedule is
+there because the dependency is the published sdkgen: a release that
+breaks a target is not a push here.
+
+AGENTS.md and COMMENT-POLICY.md said that no CI runs yet. They now say
+what runs.
+
+Checked before it was written out as a patch: actionlint 1.7.12 with
+shellcheck 0.9.0 over the workflow, clean. Each step's commands were
+run by hand on Node 22.23.4, in both lanes, and pass; the floor lane's
+script pinned sdkgen 4.44.0 and apidef 8.25.0. The suite also passes on
+Node 24.22.3, the version the workflow sets up. The workflow itself has
+not run: a session cannot push one.
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0167vhgRnddZXZJm3gcM7pwk
+---
+ .github/workflows/build.yml | 106 ++++++++++++++++++++++++++++++++++++
+ AGENTS.md                   |  11 ++--
+ COMMENT-POLICY.md           |   5 +-
+ 3 files changed, 115 insertions(+), 7 deletions(-)
+ create mode 100644 .github/workflows/build.yml
+
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+new file mode 100644
+index 0000000..3b3443d
+--- /dev/null
++++ b/.github/workflows/build.yml
+@@ -0,0 +1,106 @@
++# Builds and tests this pack on every change, and on a schedule.
++#
++# THE SCHEDULE MATTERS AS MUCH AS THE PUSH. The dependency is the published
++# @voxgig/sdkgen, so a release of sdkgen or apidef that breaks a target is not
++# a push here, and only a timed run finds it.
++#
++# TWO DEPENDENCY LANES, because a `>=` floor makes "it passes" ambiguous:
++#
++#   current  what a consumer installing today resolves.
++#   floor    the oldest versions peerDependencies permits.
++#
++# The floor is READ from peerDependencies, never written here: two copies of
++# a version drift, and the one in a workflow is the one nobody looks at.
++#
++# `npm install`, NOT `npm ci`: this repository gitignores package-lock.json,
++# so there is no lockfile to install from.
++#
++# ubuntu only. The suite stages projects in a temporary directory, compiles
++# generated libraries with tsc and runs them in child processes. None of that
++# has been run on Windows or macOS, and a runner added untested would be red
++# on arrival.
++
++name: build
++
++on:
++  push:
++    branches: [ main ]
++  pull_request:
++    branches: [ main ]
++  schedule:
++    # Daily, off the hour: GitHub queues scheduled runs hardest on the hour.
++    - cron: '47 4 * * *'
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++# A newer push to the same branch makes an in-flight run irrelevant.
++# Scheduled runs and runs on main are kept.
++concurrency:
++  group: build-${{ github.ref }}
++  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
++
++jobs:
++  build:
++    name: build (${{ matrix.deps }} deps)
++
++    strategy:
++      fail-fast: false
++      matrix:
++        deps: [current, floor]
++
++    runs-on: ubuntu-latest
++    timeout-minutes: 20
++
++    steps:
++      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
++
++      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
++        with:
++          node-version: 24.x
++
++      - name: Install
++        run: npm install --no-audit --no-fund
++
++      # Downgrade AFTER the install: npm would otherwise resolve these to the
++      # newest while satisfying everything else. `--no-save` keeps the
++      # manifest the one statement of what the floor is.
++      - name: Pin the declared floor
++        if: ${{ matrix.deps == 'floor' }}
++        run: |
++          set -euo pipefail
++          SDKGEN="$(node -p "require('./package.json').peerDependencies['@voxgig/sdkgen']")"
++          APIDEF="$(node -p "require('./package.json').peerDependencies['@voxgig/apidef']")"
++
++          # `>=4.44.0` -> `4.44.0`. A floor written any other way is not one
++          # version this lane can pin.
++          for R in "$SDKGEN" "$APIDEF"; do
++            case "$R" in
++              '>='[0-9]*) ;;
++              *) echo "::error::expected a >=x.y.z floor, got '$R' (sdkgen=$SDKGEN apidef=$APIDEF)"; exit 1 ;;
++            esac
++          done
++          SDKGEN="${SDKGEN#>=}"
++          APIDEF="${APIDEF#>=}"
++
++          echo "pinning @voxgig/sdkgen@$SDKGEN @voxgig/apidef@$APIDEF"
++          npm install --no-audit --no-fund --no-save \
++            "@voxgig/sdkgen@$SDKGEN" "@voxgig/apidef@$APIDEF"
++
++      - name: Report what is installed
++        run: |
++          node --version
++          node -p "['@voxgig/sdkgen','@voxgig/apidef','typescript'].map(n=>n+' '+require(n+'/package.json').version).join('\n')"
++
++      # Builds the components first, then runs the comment gate, the
++      # dependency gate and the suite.
++      - name: Test
++        run: npm test
++
++      - name: The comment gate's own tests
++        run: make comments-test
++
++      # This repository IS an sdkgen package, so its authoring check is a CI check.
++      - name: Check the package
++        run: npm run check-package
+diff --git a/AGENTS.md b/AGENTS.md
+index 35499ce..796f07f 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -38,10 +38,13 @@ make check             # all of the above, and the comment gate's own tests
+ anew. `.build/` holds the compiled components and is gitignored too. The
+ suite reads it, which is why `npm test` builds first.
+ 
+-**No CI runs here yet.** A session cannot push a file under
+-`.github/workflows/`, so the workflow is in [`patch/`](patch/README.md) for a
+-maintainer to apply. Until then a change rests on the runs recorded in its
+-pull request: say exactly what was run.
++CI is `.github/workflows/build.yml`. It runs `npm test`, the comment gate's
++own tests and the package check on every push and pull request, and once a
++day, on the dependencies a consumer resolves today and again at the floor
++`peerDependencies` declares. A session cannot push a file under
++`.github/workflows/`: a change to the workflow is written as a patch in a
++`patch/` folder, with a README naming the apply command, for a maintainer
++to apply.
+ 
+ 
+ ## Committed dependencies name published packages
+diff --git a/COMMENT-POLICY.md b/COMMENT-POLICY.md
+index deb2d93..c9d0c88 100644
+--- a/COMMENT-POLICY.md
++++ b/COMMENT-POLICY.md
+@@ -17,9 +17,8 @@ commented-out code. These rules apply to authored code in every language.
+ ## Automated enforcement
+ 
+ `make comments` runs `tools/comment-gate.cjs`. `make comments-test` runs its
+-positive and negative tests, including the repository gate. `npm test` runs
+-the gate. No CI runs here yet: the workflow that would run both is in
+-[`patch/`](patch/README.md). `make hooks` installs the tracked pre-push hook;
++positive and negative tests, including the repository gate. CI runs both on
++pushes and pull requests. `make hooks` installs the tracked pre-push hook;
+ Node.js and Git are required, and a missing Node.js fails the hook.
+ 
+ The automated scope covers `.ts`, `.go`, `.rs`, `.aon`, and `.aontu`, including
+-- 
+2.43.0
+
