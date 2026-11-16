@@ -1019,6 +1019,11 @@ describe('ts-seed: from the definitions', () => {
       strictEqual(makeSeed().records('planet').length, 3)
       deepStrictEqual(makeSeed().records('planet'), makeSeed({ seed: 'tide' }).records('planet'))
       notDeepStrictEqual(makeSeed().records('planet'), load(apis.solardemo.dir).makeSeed().records('planet').slice(0, 3))
+
+      const numbered = apiModel(consumer, 'solardemo', "main: kit: target: 'ts-seed': seed: { value: 7 }")
+      const target = numbered.main.kit.target[TARGET]
+      deepStrictEqual([target.seed.value, target.seed.count], [7, 5])
+      strictEqual(seedPlan(numbered, undefined, target).seed, '7')
     })
   })
 })

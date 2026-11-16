@@ -68,6 +68,8 @@ seed.record('moon', 7)
 - **A field that holds another record's id depends on the counts.** It
   points at a record that exists, so it moves when the number of records its
   target starts with changes.
+- **An id is valid while its number fits.** Where a pattern fixes the digits,
+  as `^BK-[0-9]{6}$` does, record 1,000,000 has no valid id.
 
 ### Without the definition
 
@@ -110,8 +112,8 @@ A project sets the defaults in its own model:
 main: kit: target: 'ts-seed': seed: { value: 'tide', count: 8 }
 ```
 
-`value` is the seed a caller gets when it names none. `count` is how many
-records each entity starts with.
+`value` is the seed a caller gets when it names none, as text or a number.
+`count` is how many records each entity starts with.
 
 
 ## Adding it to a project

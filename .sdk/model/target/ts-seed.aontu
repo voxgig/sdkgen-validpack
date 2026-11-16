@@ -21,7 +21,7 @@ main: kit: target: 'ts-seed': {
   # A project sets these in its own model: the seed a caller gets when it
   # names none, and how many records each entity starts with.
   seed: {
-    value: *'1' | string
+    value: *'1' | string | number
     count: *5 | number
   }
 
