@@ -1,0 +1,2 @@
+# sdkgen-validpack
+sdkgen-validpack
