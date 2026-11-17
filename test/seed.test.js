@@ -1088,6 +1088,27 @@ describe('ts-seed: from the definitions', () => {
       }
       deepStrictEqual(seed.misses(), [])
     })
+
+
+    test('a value taken from an enum or a const is a copy, so changing a record changes no other', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seed = makeSeedFor(planOf([
+        { n: 'shape', r: true, s: { t: 'enum', values: [{ side: 1, tags: ['a'] }] } },
+        { n: 'fixed', r: true, s: { t: 'const', value: [1, { two: 2 }] } },
+        { n: 'picks', r: true, s: { t: 'array', items: { t: 'enum', values: [{ k: 'x' }, { k: 'y' }] }, min: 2, max: 2, unique: true } },
+      ]))
+      const plan = JSON.stringify(seed.plan)
+      const was = JSON.stringify(seed.record('e', 1))
+
+      const first = seed.record('e', 1)
+      first.shape.side = 9
+      first.shape.tags.push('b')
+      first.fixed[1].two = 3
+      first.picks[0].k = 'z'
+
+      strictEqual(JSON.stringify(seed.record('e', 1)), was)
+      strictEqual(JSON.stringify(seed.plan), plan)
+    })
   })
 
 

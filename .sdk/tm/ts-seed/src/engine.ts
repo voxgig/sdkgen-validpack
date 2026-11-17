@@ -177,6 +177,16 @@ function put<T>(row: { [key: string]: T }, key: string, value: T): void {
 }
 
 
+// A value read out of a plan is copied, so that a caller who changes one record changes no other.
+function copy(value: Json): Json {
+  if (Array.isArray(value)) return value.map(copy)
+  if (null === value || 'object' !== typeof value) return value
+  const out: { [key: string]: Json } = {}
+  for (const key of Object.keys(value)) put(out, key, copy(value[key]))
+  return out
+}
+
+
 function tokens(name: string): string[] {
   return name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase()
     .split(/[^a-z0-9]+/).filter((t) => '' !== t)
@@ -720,7 +730,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
         deck[j] = held
       }
       if (deck.length < lo) miss(at, 'too few distinct items')
-      return deck.slice(0, Math.min(length, deck.length))
+      return deck.slice(0, Math.min(length, deck.length)).map(copy)
     }
 
     const out: Json[] = []
@@ -769,9 +779,9 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
       case 'null':
         return null
       case 'enum':
-        return 0 === spec.values.length ? null : pick(stream(at.base + '\n' + at.path), spec.values)
+        return 0 === spec.values.length ? null : copy(pick(stream(at.base + '\n' + at.path), spec.values))
       case 'const':
-        return spec.value
+        return copy(spec.value)
       case 'array':
         return arrayOf(spec, at)
       case 'map':
