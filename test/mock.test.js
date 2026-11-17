@@ -1134,6 +1134,46 @@ describe('ts-mock: from the definitions', () => {
     })
 
 
+    test('a page fact inside a required object keeps its place beside the object\'s own fills', async () => {
+      const def = {
+        paths: {
+          '/api/planet': {
+            get: {
+              responses: {
+                200: JSON_OF({
+                  type: 'object', required: ['items', 'meta'],
+                  properties: {
+                    items: { type: 'array' },
+                    meta: { type: 'object', required: ['total', 'size', 'note'], properties: { total: { type: 'integer' }, size: { type: 'integer' }, note: { type: 'string' } } },
+                  },
+                }),
+              },
+            },
+          },
+        },
+      }
+      const built = mockRoutes(model({
+        planet: entity('planet', { list: { points: [point('GET', '/api/planet', { t: { res: '`body.items`', page: { total: '`body.meta.total`' } } })] } }),
+      }), resolvedOf(def))
+      const [list] = built.routes
+      deepStrictEqual(list.fill, [
+        { at: ['meta', 'total'], count: true }, { at: ['meta', 'size'], count: true }, { at: ['meta', 'note'], value: '' },
+      ])
+
+      const lib = load(apis.solardemo[MOCK].dir)
+      const base = lib.routes.routes.find((r) => 'planet' === r.entity && 'list' === r.op)
+      const s = await serve(apis.solardemo, {}, { ...lib.routes, routes: [{ ...base, res: list.res, fill: list.fill }] })
+      try {
+        const res = await s.call('GET', '/api/planet')
+        deepStrictEqual(res.body, { items: seedOf(apis.solardemo).records('planet'), meta: { total: 5, size: 5, note: '' } })
+        deepStrictEqual(check(res.body, def.paths['/api/planet'].get.responses[200].content['application/json'].schema, def), [])
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
     test('a create whose path names the id takes it, and refuses one a record holds', async () => {
       const lib = load(apis.solardemo[MOCK].dir)
       const seed = seedOf(apis.solardemo)

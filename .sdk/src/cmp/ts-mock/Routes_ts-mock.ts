@@ -247,12 +247,13 @@ function fillsOf(schema: any, res: string[], page: any, def: any): Fill[] {
     if ('more' === role) add(key.split('.'), { value: false })
   }
 
+  // A property that holds something already placed is walked into, never filled whole.
   const walk = (given: any, at: string[], depth: number): void => {
     const s = flat(given, def)
     for (const name of [...new Set<string>(s.required)]) {
       const here = [...at, name]
       const key = here.join('.')
-      if (res.join('.').startsWith(key + '.')) {
+      if ([...taken].some((placed) => placed.startsWith(key + '.'))) {
         if (depth < 8) walk(s.properties[name], here, depth + 1)
         continue
       }
