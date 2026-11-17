@@ -139,6 +139,9 @@ const MAX_BODY = 1048576
 
 const MAX_RECORDED = 10000
 
+// A drawn id can repeat, so a free one is searched for this far past the store's size.
+const ID_SEARCH = 1024
+
 const REDACTED = '[redacted]'
 
 const BODYLESS = [204, 205, 304]
@@ -455,8 +458,13 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     }
 
     let n = next[route.entity]
-    for (let tries = 0; undefined === want.id && taken(seed.id(route.entity, n)); tries++, n++) {
-      if (entries.length < tries) return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+    if (undefined === want.id) {
+      const last = n + entries.length + ID_SEARCH
+      while (n <= last && taken(seed.id(route.entity, n))) n++
+      if (last < n) {
+        put(next, route.entity, n)
+        return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+      }
     }
     put(next, route.entity, n + 1)
     const seeded = seed.record(route.entity, n)

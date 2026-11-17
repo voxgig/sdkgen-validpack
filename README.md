@@ -167,10 +167,12 @@ path parameters the definition names.
 - **`create`** takes the body as the record. The record's id is the seed
   library's id for the next record number whose id no record holds, and each
   required field the body leaves out comes from the seed library's record of
-  that number. A record
-  created on a parent's path sits under that parent, and a field of the record
-  that names its parent holds that parent's id. A create whose path names the
-  new record's id takes that id, or answers 409 where a record holds it.
+  that number. Where the ids are drawn from a short list rather than
+  numbered, they repeat, so the search runs well past the store's size, and
+  answers 409 when it finds none free. A record created on a parent's path
+  sits under that parent, and a field of the record that names its parent
+  holds that parent's id. A create whose path names the new record's id takes
+  that id, or answers 409 where a record holds it.
 - **`update`** and **`patch`** merge the body into the record. The record
   keeps its id, and the parent its path names.
 - **`remove`** deletes the record and answers it.

@@ -1330,6 +1330,45 @@ describe('ts-mock: from the definitions', () => {
     })
 
 
+    test('a drawn id is searched for well past the store, and a search that found none is not run again', async () => {
+      const t = thing(apis.solardemo, '', { t: 'enum', values: ['a', 'b'] })
+      const tried = []
+      const library = {
+        makeSeed: (options) => {
+          const made = t.library.makeSeed(options)
+          return { ...made, id: (entity, n) => { tried.push(n); return made.id(entity, n) } }
+        },
+      }
+      const searched = async () => {
+        tried.length = 0
+        const res = await s.call('POST', '/thing', { body: {} })
+        const numbers = [...new Set(tried)]
+        return { res, numbers }
+      }
+      const s = await serve(apis.solardemo, { seed: 4, count: 1 }, t.routes, library)
+      try {
+        deepStrictEqual(s.mock.records('thing').map((r) => r.id), ['b'])
+
+        const found = await searched()
+        deepStrictEqual([found.res.status, found.res.body.id], [201, 'a'])
+        deepStrictEqual(found.numbers, [2, 3, 4, 5, 6, 7, 8, 9])
+
+        const first = await searched()
+        deepStrictEqual([first.res.status, first.res.body], [409, { code: 'conflict', message: 'no thing id is free' }])
+        strictEqual(first.numbers[0], 10)
+        ok(1000 < first.numbers.length, 'only ' + first.numbers.length + ' numbers searched')
+
+        const second = await searched()
+        strictEqual(second.res.status, 409)
+        strictEqual(second.numbers[0], first.numbers[first.numbers.length - 1] + 1)
+        deepStrictEqual(s.mock.records('thing').map((r) => r.id), ['b', 'a'])
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
     test('a read-only field is the mock\'s at any depth, on a create, an update and a patch', async () => {
       const t = thing(apis.solardemo)
       const s = await serve(apis.solardemo, {}, t.routes, t.library)
