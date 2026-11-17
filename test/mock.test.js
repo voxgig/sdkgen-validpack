@@ -319,16 +319,18 @@ function seedOf(made, options) {
 }
 
 // One entity no definition here holds, `thing`: a read-only field inside an object and inside
-// a list, and a route for each operation, a create by a chosen id among them.
-function thing(made, lead = 'thing-') {
+// a list, and a route for each operation, a create by a chosen id among them. An id spec makes
+// its ids drawn rather than numbered.
+function thing(made, lead = 'thing-', idSpec) {
   const engine = load(made[SEED].dir)
   const plan = {
     version: 1, api: 'thing', source: 'definition', seed: '1', count: 2, notes: [],
     entity: {
       thing: {
-        name: 'thing', source: 'definition', parents: [], id: { field: 'id', as: 'text', lead, width: 1 },
+        name: 'thing', source: 'definition', parents: [],
+        id: undefined === idSpec ? { field: 'id', as: 'text', lead, width: 1 } : { field: 'id', as: 'spec' },
         fields: [
-          { n: 'id', r: true, s: { t: 'string' } },
+          { n: 'id', r: true, s: idSpec ?? { t: 'string' } },
           { n: 'name', r: true, s: { t: 'string' } },
           {
             n: 'info', r: true,
@@ -1235,6 +1237,42 @@ describe('ts-mock: from the definitions', () => {
       }
       finally {
         await s.close()
+      }
+    })
+
+
+    test('a created id is one no record holds, after a create by a chosen id too', async () => {
+      const t = thing(apis.solardemo)
+      const s = await serve(apis.solardemo, { count: 1 }, t.routes, t.library)
+      try {
+        const chosen = await s.call('PUT', '/thing/thing-3', { body: { name: 'Chosen' } })
+        deepStrictEqual([chosen.status, chosen.body.id], [201, 'thing-3'])
+        const minted = await s.call('POST', '/thing', { body: { name: 'Minted' } })
+        deepStrictEqual([minted.status, minted.body.id], [201, 'thing-4'])
+        deepStrictEqual(minted.body, { ...t.seed.record('thing', 4), name: 'Minted' })
+
+        deepStrictEqual((await s.call('GET', '/thing/thing-3')).body, chosen.body)
+        deepStrictEqual((await s.call('GET', '/thing/thing-4')).body, minted.body)
+        strictEqual((await s.call('POST', '/thing', { body: {} })).body.id, 'thing-5')
+        deepStrictEqual(s.mock.records('thing').map((r) => r.id), ['thing-1', 'thing-3', 'thing-4', 'thing-5'])
+
+        const held = await s.call('PUT', '/thing/thing-4', { body: {} })
+        deepStrictEqual([held.status, held.body.code], [409, 'conflict'])
+        strictEqual(s.mock.records('thing').length, 4)
+      }
+      finally {
+        await s.close()
+      }
+
+      const only = thing(apis.solardemo, '', { t: 'const', value: 'only' })
+      const o = await serve(apis.solardemo, { count: 1 }, only.routes, only.library)
+      try {
+        const res = await o.call('POST', '/thing', { body: {} })
+        deepStrictEqual([res.status, res.body], [409, { code: 'conflict', message: 'no thing id is free' }])
+        deepStrictEqual(o.mock.records('thing').map((r) => r.id), ['only'])
+      }
+      finally {
+        await o.close()
       }
     })
 

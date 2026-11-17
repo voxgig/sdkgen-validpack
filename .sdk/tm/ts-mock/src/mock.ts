@@ -428,11 +428,15 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
   const create = (route: Route, want: Want, given: Row): Answer => {
     const ent = entityOf(route.entity)
     const entries = store[route.entity]
-    if (undefined !== want.id && entries.some((e) => String(e.id) === want.id)) {
+    const taken = (id: string | number | null): boolean => null !== id && entries.some((e) => String(e.id) === String(id))
+    if (undefined !== want.id && taken(want.id)) {
       return { status: 409, body: fail('conflict', route.entity + ' ' + want.id + ' already exists') }
     }
 
-    const n = next[route.entity]
+    let n = next[route.entity]
+    for (let tries = 0; undefined === want.id && taken(seed.id(route.entity, n)); tries++, n++) {
+      if (entries.length < tries) return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+    }
     put(next, route.entity, n + 1)
     const seeded = seed.record(route.entity, n)
     const id = undefined === want.id ? seed.id(route.entity, n) : typedId(route.entity, want.id)

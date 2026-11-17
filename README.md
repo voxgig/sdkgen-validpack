@@ -165,8 +165,9 @@ path parameters the definition names.
   and any other query parameter is ignored.
 - **`load`** answers the record its path names.
 - **`create`** takes the body as the record. The record's id is the seed
-  library's id for the next record number, and each required field the body
-  leaves out comes from the seed library's record of that number. A record
+  library's id for the next record number whose id no record holds, and each
+  required field the body leaves out comes from the seed library's record of
+  that number. A record
   created on a parent's path sits under that parent, and a field of the record
   that names its parent holds that parent's id. A create whose path names the
   new record's id takes that id, or answers 409 where a record holds it.
