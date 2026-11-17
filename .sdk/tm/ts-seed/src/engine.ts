@@ -252,6 +252,7 @@ function sentence(draw: Draw): string {
     .replace('{a}', pick(draw, ADJECTIVES))
     .replace('{n}', pick(draw, NOUNS))
     .replace('{m}', pick(draw, NOUNS))
+    .replace(/\b([Aa]) (?=[aeiou])/g, '$1n ')
 }
 
 

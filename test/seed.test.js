@@ -729,6 +729,22 @@ describe('ts-seed: from the definitions', () => {
 
   describe('the library', () => {
 
+    test('takes "an" before a vowel', () => {
+      const strings = (value) => 'string' === typeof value ? [value]
+        : null != value && 'object' === typeof value ? Object.values(value).flatMap(strings) : []
+      let sentences = 0
+      for (const api of Object.keys(apis)) {
+        for (const seed of SEEDS) {
+          const made = load(apis[api].dir).makeSeed({ seed, count: NUMBERS })
+          for (const text of made.entities().flatMap((e) => made.records(e)).flatMap(strings)) {
+            if (/ /.test(text) && /\.$/.test(text)) sentences++
+            ok(!/\b[Aa] [aeiou]/.test(text), text)
+          }
+        }
+      }
+      ok(100 < sentences, 'only ' + sentences + ' sentences to judge')
+    })
+
     test('is readable: ids name their entity, and text is words', () => {
       const solar = load(apis.solardemo.dir).makeSeed()
       deepStrictEqual(solar.records('planet').map((r) => r.id),
