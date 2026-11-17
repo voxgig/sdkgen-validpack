@@ -4,8 +4,9 @@
 in step: edit this one.
 
 `@voxgig/sdkgen-validpack` is an sdkgen package of validation targets: things
-generated from an API's model to test an SDK against. It holds one target
-today, `ts-seed`. A second, `ts-mock`, is planned and will need `ts-seed`.
+generated from an API's model to test an SDK against. It holds two targets:
+`ts-seed`, a library of seeded test data, and `ts-mock`, a mock server that
+serves that library's records and so needs `ts-seed` in the same project.
 
 **Nothing here is published.** `package.json` is `private`, there is no
 release route, and a project uses the pack by linking a checkout (see
@@ -53,8 +54,10 @@ tracked manifest, and `npm test` runs it. Linking a sibling checkout to test
 an unreleased tool is the right way to work, and undoing the link is part of
 finishing. An exception goes in `tools/dep-gate.json` with a reason.
 
-The generated library has no runtime dependency at all, and a suite test
-holds that: nothing under `.sdk/tm/ts-seed/` may import a module.
+The generated libraries have no runtime dependency at all, and suite tests
+hold that: nothing under `.sdk/tm/ts-seed/` may import a module, and nothing
+under `.sdk/tm/ts-mock/` may import one but `node:http`. The mock reaches the
+seed library by a path at run time, never by a dependency.
 
 
 ## How the `ts-seed` target is built
@@ -79,6 +82,41 @@ value is made* belongs in the engine. The plan's types are written twice, in
 `Plan_ts-seed.ts` and in `engine.ts`, because a component cannot import a
 template: `plan.ts` is type-checked against the engine's copy whenever a
 generated library compiles, which the suite does for every definition.
+
+
+## How the `ts-mock` target is built
+
+The same two layers:
+
+| Layer | Path | Holds |
+| --- | --- | --- |
+| Templates | `.sdk/tm/ts-mock/` | The engine that serves, the public entry that loads the seed library, the command, the `tsconfig.json` |
+| Components | `.sdk/src/cmp/ts-mock/` | The routes, the `package.json`, the README |
+
+- `Routes_ts-mock.ts` turns the model and the API definition into the
+  **routes**: per point, its method, path and path parameters, its success
+  status, where its records sit in the response and what else the response
+  holds, and how its request carries the record. Then the address and the
+  credential. It is a pure function, and the unit tests call it on
+  hand-built input.
+- `Main_ts-mock.ts` refuses a project without an active `ts-seed`, then
+  writes the files. The routes become `src/routes.ts`, as data.
+- `mock.ts`, a template, serves the routes from a store it fills from the
+  seed library. It knows no API.
+
+What a path parameter means is not in the routes. A parameter is the
+record's id where the model's rename says so, and a parent's id where the
+seed library's plan has a parent of that name, read when the mock starts. So
+the two targets cannot disagree about which record sits under which.
+
+A component cannot import the other target's component either: `Main_ts-mock`
+has to load in a project that lacks `ts-seed`, to say that it does. So the
+little schema reading the routes need, for statuses and envelopes, is written
+in `Routes_ts-mock.ts` itself.
+
+The suite generates both targets side by side, with `generateTargets` in
+`test/support.js`, since the mock loads `../ts-seed/dist` when it starts. A
+test that serves starts the mock on port 0 and talks to it with `fetch`.
 
 
 ## Things that have already gone wrong once
@@ -114,7 +152,19 @@ generated library compiles, which the suite does for every definition.
   CLI, the way a project adds it, doctor finds nothing, and a suite test
   holds that. It is not a drift in this pack.
 - **`package add` warns that the target has no source for each feature the
-  project holds.** It has none: the target takes no feature.
+  project holds.** It has none: neither target takes a feature.
+- **`pageSize` holds the word `pages`.** The envelope filler once read it as
+  a page count and gave it 1. A name is matched whole now, and the unit test
+  of envelopes names both.
+- **Node's server sends a `Date` header.** Two answers to the same request
+  then differ by the second. The engine turns it off, and the determinism
+  test compares headers as well as bodies.
+- **A generated SDK's live suite calls only what it has a recipe for.**
+  Without one in the project's guide, its entity flows run, and a create
+  whose body has a required field with no example is blocked, which fails a
+  strict run. With any recipe, its scenario runner plans every point and
+  blocks each one that has none. A run against the mock that gives some
+  points no recipe proves less than it looks.
 
 
 ## Changing the target
@@ -123,11 +173,12 @@ Change the component or the template, then run `npm test`. After a change to
 what the target promises, break the rule on purpose and see a test fail
 before trusting the suite: the rules above were each found that way.
 
-A new definition in `test/def/` needs a row in the suite's `SCHEMAS` table,
-and a test fails until it has one. `test/check.js` is the judge of validity.
-It reads the definition as written and shares no code with the target, and
-its own test lists values it has to refuse. Keep it that way: a checker that
-imports the plan agrees with the plan.
+A new definition in `test/def/` needs a row in the seed suite's `SCHEMAS`
+table and in the mock suite's `PORTS` table, and a test fails until it has
+both. `test/check.js` is the judge of validity. It reads the definition as
+written and shares no code with either target, and its own test lists values
+it has to refuse. Keep it that way: a checker that imports the plan agrees
+with the plan.
 
 Generation is overwrite. Never edit a generated library: fix the template or
 the component and generate again.

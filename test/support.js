@@ -140,31 +140,53 @@ function walk(dir, base = dir) {
 }
 
 
-// Generates the target into the staged project and moves the result to a
-// directory of its own. `built` is apidef's build result; without it the
-// generation has no definition, as under the test kit.
-async function generate(consumer, model, built) {
-  const sdkgen = SdkGen({ fs: Fs, folder: consumer.root, root: '', pino: consumer.log })
-  const out = Path.join(consumer.root, TARGET)
-  Fs.rmSync(out, { recursive: true, force: true })
-
-  const res = await consumer.inSdk(() => sdkgen.generate({
-    model, root: root(), ...(null == built ? {} : { buildctx: built }),
-  }))
-  if (true !== res.ok) throw new Error('generation failed: ' + JSON.stringify(res))
-
-  const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), 'ts-seed-'))
-  Fs.cpSync(out, dir, { recursive: true })
-  Fs.rmSync(out, { recursive: true, force: true })
-
-  const files = walk(dir)
+function leaksOf(files) {
   const leaks = []
   for (const [path, text] of Object.entries(files)) {
     for (const token of PLACEHOLDERS) if (text.includes(token)) leaks.push(path + ': ' + token)
     const ref = text.match(/\$\$[A-Za-z_][A-Za-z0-9_.]*\$\$/)
     if (null != ref) leaks.push(path + ': ' + ref[0])
   }
-  return { dir, files, leaks }
+  return leaks
+}
+
+
+// Runs a generation in the staged project and moves each named target's
+// output, side by side, into a directory of its own. `built` is apidef's
+// build result; without it the generation has no definition, as under the
+// test kit. A failed generation throws its own error.
+async function generateTargets(consumer, model, built, targets) {
+  const sdkgen = SdkGen({ fs: Fs, folder: consumer.root, root: '', pino: consumer.log })
+  for (const target of targets) Fs.rmSync(Path.join(consumer.root, target), { recursive: true, force: true })
+
+  const res = await consumer.inSdk(() => sdkgen.generate({
+    model, root: root(), ...(null == built ? {} : { buildctx: built }),
+  }))
+  if (true !== res.ok) {
+    throw res.err instanceof Error ? res.err : new Error('generation failed: ' + JSON.stringify(res))
+  }
+
+  const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), targets.join('-') + '-'))
+  const out = {}
+  for (const target of targets) {
+    const made = Path.join(consumer.root, target)
+    Fs.cpSync(made, Path.join(dir, target), { recursive: true })
+    Fs.rmSync(made, { recursive: true, force: true })
+    const files = walk(Path.join(dir, target))
+    out[target] = { dir: Path.join(dir, target), files, leaks: leaksOf(files) }
+  }
+  return { dir, ...out }
+}
+
+
+// Generates the target into the staged project and moves the result to a
+// directory of its own.
+async function generate(consumer, model, built) {
+  const made = await generateTargets(consumer, model, built, [TARGET])
+  const dir = Fs.mkdtempSync(Path.join(Os.tmpdir(), 'ts-seed-'))
+  Fs.cpSync(made[TARGET].dir, dir, { recursive: true })
+  Fs.rmSync(made.dir, { recursive: true, force: true })
+  return { dir, files: made[TARGET].files, leaks: made[TARGET].leaks }
 }
 
 
@@ -183,5 +205,5 @@ function compileLibrary(dir) {
 
 
 module.exports = {
-  PKG, DEF_DIR, TARGET, defs, buildApi, apiModel, compileConsumer, generate, compileLibrary,
+  PKG, DEF_DIR, TARGET, defs, buildApi, apiModel, compileConsumer, generate, generateTargets, compileLibrary,
 }
