@@ -171,11 +171,24 @@ function typeOf(schema: any): string | undefined {
 }
 
 
+// A property both parts name is held to both, unless it is one reference twice or a cut, where the later stands.
+function mergeProperty(a: any, b: any): any {
+  const ref = (s: any) => null != s && 'object' === typeof s ? s['x-ref'] : undefined
+  if (isCut(a) || isCut(b) || ('string' === typeof ref(a) && ref(a) === ref(b))) return b
+  return { allOf: [a, b] }
+}
+
+
 function merge(a: any, b: any): any {
   const out: any = { ...a, ...b }
 
   if (null != a.properties || null != b.properties) {
-    out.properties = { ...(a.properties || {}), ...(b.properties || {}) }
+    const pa = a.properties || {}
+    const pb = b.properties || {}
+    const named = (props: any, name: string) => Object.prototype.hasOwnProperty.call(props, name)
+    out.properties = Object.fromEntries([...new Set([...Object.keys(pa), ...Object.keys(pb)])]
+      .map((name) => [name, !named(pb, name) ? pa[name] : !named(pa, name) ? pb[name] :
+        mergeProperty(pa[name], pb[name])]))
   }
   if (Array.isArray(a.required) || Array.isArray(b.required)) {
     out.required = [...new Set([...(a.required || []), ...(b.required || [])])]

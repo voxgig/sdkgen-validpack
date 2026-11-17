@@ -207,10 +207,11 @@ describe('ts-seed: the plan', () => {
 
 
   test('an allOf is merged, and a union gives its first branch that is not null', () => {
+    const meta = (props, required = []) => ({ type: 'object', required, properties: props })
     const plan = thingPlan({
       allOf: [
-        { type: 'object', required: ['id'], properties: { id: { type: 'string' }, n: { type: 'integer', minimum: 1, maximum: 50 } } },
-        { type: 'object', required: ['n'], properties: { n: { type: 'integer', minimum: 5 }, extra: { type: 'boolean' } } },
+        meta({ id: { type: 'string' }, n: { type: 'integer', minimum: 1, maximum: 50 }, meta: meta({ a: { type: 'string', maxLength: 3 } }) }, ['id']),
+        meta({ n: { type: 'integer', minimum: 5 }, extra: { type: 'boolean' }, meta: meta({ b: { type: 'boolean' } }, ['a']) }, ['n']),
       ],
       properties: {
         either: { oneOf: [{ type: 'null' }, { type: 'integer', minimum: 3 }, { type: 'string' }] },
@@ -219,8 +220,11 @@ describe('ts-seed: the plan', () => {
     })
 
     deepStrictEqual(plan.entity.thing.fields.map((f) => [f.n, f.r]),
-      [['id', true], ['n', true], ['extra', false], ['either', false], ['tight', false]])
-    deepStrictEqual(specOf(plan, 'n'), { t: 'integer', min: 5 })
+      [['id', true], ['n', true], ['meta', false], ['extra', false], ['either', false], ['tight', false]])
+    // A property both parts name is held to both of them.
+    deepStrictEqual(specOf(plan, 'n'), { t: 'integer', min: 5, max: 50 })
+    deepStrictEqual(specOf(plan, 'meta').fields, [
+      { n: 'a', r: true, s: { t: 'string', max: 3 } }, { n: 'b', r: false, s: { t: 'boolean' } }])
     deepStrictEqual(specOf(plan, 'either'), { t: 'integer', min: 3 })
     deepStrictEqual(specOf(plan, 'tight'), { t: 'integer', min: 4, max: 9 })
     deepStrictEqual(plan.notes, [{ entity: 'thing', field: 'either', note: 'the first of 2 alternatives is used' }])
@@ -1067,6 +1071,22 @@ describe('ts-seed: from the definitions', () => {
         deepStrictEqual(seed.misses(), [], 'seed ' + value)
       }
       strictEqual(makeSeedFor(planOf(fields)).record('e', 1).code, 'a'.repeat(19) + 'b')
+    })
+
+
+    test('allOf parts that both constrain a property hold it to both', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const schema = {
+        allOf: [
+          { type: 'object', required: ['id'], properties: { id: { type: 'string' }, n: { type: 'integer', maximum: 2 } } },
+          { type: 'object', required: ['n'], properties: { n: { type: 'integer', minimum: 1 } } },
+        ],
+      }
+      const seed = makeSeedFor(thingPlan(schema), { count: 40 })
+      for (const record of seed.records('thing')) {
+        deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+      }
+      deepStrictEqual(seed.misses(), [])
     })
   })
 
