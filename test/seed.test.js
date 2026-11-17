@@ -1045,6 +1045,29 @@ describe('ts-seed: from the definitions', () => {
       deepStrictEqual([text.id('t', 9), text.id('t', 10)], ['T9', 'T10'])
       deepStrictEqual(text.misses().map((m) => [m.entity, m.n, m.path]), [['t', 10, 'id']])
     })
+
+
+    test('a pattern stretched to a length leaves room for whatever follows the repeat', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const shaped = (source, length) => ({ t: 'string', re: source, pat: compilePattern(source), min: length, max: length })
+      const fields = [
+        { n: 'code', r: true, s: shaped('^a+b+$', 20) },
+        { n: 'tail', r: true, s: shaped('^[a-z]+-(xy|z)[0-9]{2}$', 12) },
+        // A walk that takes the group is too long whatever is wanted, so a later try must still want five.
+        { n: 'serial', r: true, s: shaped('^[a-z]+(-[0-9]{9})?$', 5) },
+      ]
+      for (const value of SEEDS) {
+        const seed = makeSeedFor(planOf(fields), { seed: value })
+        for (let n = 1; n <= 300; n++) {
+          const r = seed.record('e', n)
+          for (const f of fields) {
+            ok(new RegExp(f.s.re).test(r[f.n]) && f.s.min === r[f.n].length, f.n + ': ' + JSON.stringify(r[f.n]))
+          }
+        }
+        deepStrictEqual(seed.misses(), [], 'seed ' + value)
+      }
+      strictEqual(makeSeedFor(planOf(fields)).record('e', 1).code, 'a'.repeat(19) + 'b')
+    })
   })
 
 

@@ -88,6 +88,8 @@ type At = { base: string, entity: string, n: number, path: string, name: string 
 
 type Text = { text: string, free: boolean }
 
+type Piece = { text: string, c: number[], room: number }
+
 type StringSpec = Extract<Spec, { t: 'string' }>
 
 type NumberSpec = Extract<Spec, { t: 'integer' | 'number' }>
@@ -414,26 +416,39 @@ function classChar(ranges: number[], draw: Draw): string {
 }
 
 
-// `want` is the length to reach; the first repeat that can stretch takes up the slack.
-function fromPattern(nodes: PatNode[], draw: Draw, want: number, out: { text: string }): void {
+// A repeat of one class that may stretch is laid at its least, with the room it has to grow.
+function lay(nodes: PatNode[], draw: Draw, stretch: boolean, out: Piece[]): void {
   for (const node of nodes) {
     if ('c' in node) {
-      out.text += classChar(node.c, draw)
+      out.push({ text: classChar(node.c, draw), c: node.c, room: 0 })
     }
     else if ('g' in node) {
-      fromPattern(pick(draw, node.g), draw, want, out)
+      lay(pick(draw, node.g), draw, stretch, out)
+    }
+    else if (stretch && 'c' in node.q) {
+      const piece: Piece = { text: '', c: node.q.c, room: node.max < 0 ? Infinity : node.max - node.min }
+      for (let i = 0; i < node.min; i++) piece.text += classChar(node.q.c, draw)
+      out.push(piece)
     }
     else {
-      const open = node.max < 0
-      const most = open ? node.min + 3 : Math.min(node.max, node.min + 6)
-      let count = node.min + below(draw, most - node.min + 1)
-      if (0 <= want && 'c' in node.q) {
-        const slack = Math.max(node.min, want - out.text.length)
-        count = open ? slack : Math.min(node.max, slack)
-      }
-      for (let i = 0; i < count; i++) fromPattern([node.q], draw, want, out)
+      const most = node.max < 0 ? node.min + 3 : Math.min(node.max, node.min + 6)
+      const count = node.min + below(draw, most - node.min + 1)
+      for (let i = 0; i < count; i++) lay([node.q], draw, stretch, out)
     }
   }
+}
+
+
+// `want` is the length to reach, or -1. The whole walk is laid before the slack is shared out,
+// first repeat first, so that whatever follows a repeat keeps its room.
+function fromPattern(nodes: PatNode[], draw: Draw, want: number): string {
+  const pieces: Piece[] = []
+  lay(nodes, draw, 0 <= want, pieces)
+  let slack = want - pieces.reduce((n, p) => n + p.text.length, 0)
+  for (const p of pieces) {
+    for (; 0 < slack && 0 < p.room; slack--, p.room--) p.text += classChar(p.c, draw)
+  }
+  return pieces.map((p) => p.text).join('')
 }
 
 
@@ -449,12 +464,13 @@ function fit(text: string, spec: StringSpec, draw: Draw): string {
 }
 
 
-// The length a pattern is stretched to on try `k`, falling so that a fixed tail still fits.
+// The length a pattern is stretched to on try `k`: each readable length the schema admits, longest first.
 function wanted(spec: StringSpec, k: number): number {
   if (undefined === spec.min && undefined === spec.max) return -1
+  const least = spec.min ?? 0
   const most = undefined === spec.min ? Math.min(spec.max as number, 12) :
     Math.min(spec.max ?? spec.min + 4, spec.min + 4)
-  return Math.max(0, most - (k - 1) * Math.max(1, Math.ceil(most / (TRIES - 2))))
+  return most - (k - 1) % Math.max(1, most - least + 1)
 }
 
 
@@ -591,9 +607,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
         text = shaped
       }
       else if (0 < k && undefined !== spec.pat) {
-        const out = { text: '' }
-        fromPattern(spec.pat, draw, wanted(spec, k), out)
-        text = out.text
+        text = fromPattern(spec.pat, draw, wanted(spec, k))
       }
       else {
         const made = 0 === k ? readable(ts, at, draw) : plain(k, draw)
