@@ -1241,6 +1241,34 @@ describe('ts-mock: from the definitions', () => {
     })
 
 
+    test('a path parameter is matched as sent and decoded after, so an id may hold a slash', async () => {
+      const t = thing(apis.solardemo, 'thing/')
+      const s = await serve(apis.solardemo, {}, t.routes, t.library)
+      try {
+        const was = t.seed.record('thing', 1)
+        const path = '/thing/' + encodeURIComponent(was.id)
+        deepStrictEqual([was.id, path], ['thing/1', '/thing/thing%2F1'])
+        deepStrictEqual((await s.call('GET', path)).body, was)
+        const updated = await s.call('POST', path, { body: { name: 'Slashed' } })
+        deepStrictEqual([updated.status, updated.body], [200, { ...was, name: 'Slashed' }])
+
+        const made = await s.call('PUT', '/thing/' + encodeURIComponent('a/b c'), { body: {} })
+        deepStrictEqual([made.status, made.body.id], [201, 'a/b c'])
+        strictEqual((await s.call('GET', '/thing/a%2Fb%20c')).body.id, 'a/b c')
+
+        strictEqual((await s.call('DELETE', path)).status, 204)
+        strictEqual((await s.call('GET', path)).status, 404)
+        strictEqual((await s.call('GET', '/thing/thing/2')).status, 404)
+        strictEqual((await s.call('GET', '/%74hing/' + encodeURIComponent('thing/2'))).body.id, 'thing/2')
+        strictEqual((await s.call('GET', '/%5F%5Fhealth')).body.api, 'thing')
+        strictEqual(s.mock.requests()[0].path, path)
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
     test('a created id is one no record holds, after a create by a chosen id too', async () => {
       const t = thing(apis.solardemo)
       const s = await serve(apis.solardemo, { count: 1 }, t.routes, t.library)

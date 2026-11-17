@@ -203,17 +203,18 @@ function segments(path: string): Seg[] {
 }
 
 
+// Matched as sent, so that a value may hold an encoded slash, and decoded once matched.
 function matches(segs: Seg[], parts: string[], into: { [name: string]: string }): boolean {
   if (segs.length !== parts.length) return false
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i]
     if ('lit' in seg) {
-      if (seg.lit !== parts[i]) return false
+      if (seg.lit !== decode(parts[i])) return false
       continue
     }
     const m = seg.re.exec(parts[i])
     if (null == m) return false
-    seg.names.forEach((name, j) => put(into, name, m[j + 1]))
+    seg.names.forEach((name, j) => put(into, name, decode(m[j + 1])))
   }
   return true
 }
@@ -230,7 +231,7 @@ function split(url: string): { parts: string[], path: string, query: Query } {
     const value = eq < 0 ? '' : decode(pair.slice(eq + 1).replace(/\+/g, ' '))
     put(query, key, own(query, key) ? ([] as string[]).concat(query[key], value) : value)
   }
-  return { parts: path.split('/').filter((part) => '' !== part).map(decode), path, query }
+  return { parts: path.split('/').filter((part) => '' !== part), path, query }
 }
 
 
@@ -629,9 +630,10 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const values: { [name: string]: string } = {}
     const under = matches(prefix, parts.slice(0, prefix.length), values) ? parts.slice(prefix.length) : undefined
     for (const rest of [parts, under]) {
-      if (undefined !== rest && 1 === rest.length && CONTROL.includes(rest[0])) {
+      const name = undefined !== rest && 1 === rest.length ? decode(rest[0]) : ''
+      if (CONTROL.includes(name)) {
         const answer = undefined === text ? { status: 413, body: fail('payload_too_large', 'the body is too large') } :
-          control(rest[0], method, text)
+          control(name, method, text)
         return { answer, record: false }
       }
     }
