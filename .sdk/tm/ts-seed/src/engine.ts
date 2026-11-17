@@ -601,30 +601,39 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
     const integer = 'integer' === spec.t
     const [hlo, hhi, hdec] = numberHint(tokens(at.name), integer)
     const stepped = undefined !== spec.step && 0 < spec.step
-    const dec = integer ? 0 : stepped ? decimals(spec.step as number) : hdec
-    const scale = POW[dec]
-    // A whole number is left as it is: rounding it through a fraction can move a large one.
-    const scaled = (x: number): number => 1 === scale ? x : exact(x * scale)
     const [lo, hi] = bounds(spec, hlo, hhi)
-    let a = Math.ceil(scaled(lo))
-    let b = Math.floor(scaled(hi))
-    if (spec.xmin && undefined !== spec.min && a <= scaled(spec.min)) {
-      a = Math.floor(scaled(spec.min)) + 1
+
+    // The candidates at `dec` places: whole multiples of `unit`, from `a` to `b`, over `scale`.
+    const candidates = (dec: number): { a: number, b: number, unit: number, scale: number } => {
+      const scale = POW[dec]
+      // A whole number is left as it is: rounding it through a fraction can move a large one.
+      const scaled = (x: number): number => 1 === scale ? x : exact(x * scale)
+      let a = Math.ceil(scaled(lo))
+      let b = Math.floor(scaled(hi))
+      if (spec.xmin && undefined !== spec.min && a <= scaled(spec.min)) {
+        a = Math.floor(scaled(spec.min)) + 1
+      }
+      if (spec.xmax && undefined !== spec.max && b >= scaled(spec.max)) {
+        b = Math.ceil(scaled(spec.max)) - 1
+      }
+      let unit = 1
+      if (stepped) {
+        unit = Math.max(1, Math.round((spec.step as number) * scale))
+        a = Math.ceil(a / unit)
+        b = Math.floor(b / unit)
+      }
+      return { a, b, unit, scale }
     }
-    if (spec.xmax && undefined !== spec.max && b >= scaled(spec.max)) {
-      b = Math.ceil(scaled(spec.max)) - 1
-    }
-    let unit = 1
-    if (stepped) {
-      unit = Math.max(1, Math.round((spec.step as number) * scale))
-      a = Math.ceil(a / unit)
-      b = Math.floor(b / unit)
-    }
-    if (b < a) {
+
+    let dec = integer ? 0 : stepped ? decimals(spec.step as number) : hdec
+    let c = candidates(dec)
+    // The name's precision gives way to a range too narrow for it.
+    while (c.b < c.a && !integer && !stepped && dec < POW.length - 1) c = candidates(++dec)
+    if (c.b < c.a) {
       miss(at, 'no number lies within the bounds')
-      b = a
+      c.b = c.a
     }
-    return ((a + below(draw, b - a + 1)) * unit) / scale
+    return ((c.a + below(draw, c.b - c.a + 1)) * c.unit) / c.scale
   }
 
   const idOf = (ent: EntityPlan, n: number): string | number | null => {

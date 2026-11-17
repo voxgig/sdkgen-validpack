@@ -148,6 +148,12 @@ function thingPlan(schema, extra = {}) {
 
 const specOf = (plan, name) => plan.entity.thing.fields.find((f) => f.n === name)?.s
 
+// A plan of one entity `e`, with no id, that holds `fields`.
+const planOf = (fields) => ({
+  version: 1, api: 'x', source: 'definition', seed: '1', count: 1, notes: [],
+  entity: { e: { name: 'e', source: 'definition', parents: [], fields } },
+})
+
 
 describe('ts-seed: the plan', () => {
 
@@ -976,6 +982,24 @@ describe('ts-seed: from the definitions', () => {
       strictEqual(Object.getPrototypeOf(record), Object.prototype)
       strictEqual(JSON.parse(JSON.stringify(record)).constructor, record.constructor)
       strictEqual(Object.getOwnPropertyDescriptor(record, '__proto__').value, 5)
+    })
+
+
+    test('a range too narrow for the precision a name suggests is drawn more finely', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seed = makeSeedFor(planOf([
+        { n: 'ratio', r: true, s: { t: 'number', min: 0.001, max: 0.009 } },
+        { n: 'rate', r: true, s: { t: 'number', min: 0, max: 0.01, xmin: true, xmax: true } },
+        { n: 'count', r: true, s: { t: 'number', min: 0.1, max: 0.5 } },
+      ]))
+      const places = (x, d) => Number(x.toFixed(d)) === x
+      for (let n = 1; n <= 300; n++) {
+        const r = seed.record('e', n)
+        ok(0.001 <= r.ratio && r.ratio <= 0.009 && places(r.ratio, 3), 'ratio ' + r.ratio)
+        ok(0 < r.rate && r.rate < 0.01 && places(r.rate, 3), 'rate ' + r.rate)
+        ok(0.1 <= r.count && r.count <= 0.5 && places(r.count, 1), 'count ' + r.count)
+      }
+      deepStrictEqual(seed.misses(), [])
     })
   })
 
