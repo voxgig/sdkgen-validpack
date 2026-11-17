@@ -49,7 +49,9 @@ seed.record('moon', 7)
   `email`, `title`, `city` or `created_at` holds what its name says. Emails
   are at `example.com`. Dates come from a fixed calendar.
 - **Parents that exist.** A record nested under another holds the id of one
-  of the records its parent entity starts with.
+  of the records its parent entity starts with. Where that entity starts with
+  none, the record holds the id its first record would have, and
+  `seed.misses()` reports it.
 
 ### What it does not promise
 
@@ -67,9 +69,10 @@ seed.record('moon', 7)
   same one.
 - **A field that holds another record's id depends on the counts.** It
   points at a record that exists, so it moves when the number of records its
-  target starts with changes.
+  target starts with changes. A target that starts with none is reported.
 - **An id is valid while its number fits.** Where a pattern fixes the digits,
-  as `^BK-[0-9]{6}$` does, record 1,000,000 has no valid id.
+  as `^BK-[0-9]{6}$` does, record 1,000,000 has no valid id. A number id runs
+  out at its bounds the same way. Either is reported in `seed.misses()`.
 
 ### Without the definition
 

@@ -36,6 +36,7 @@ export type IdPlan = {
   lead?: string
   width?: number
   base?: number
+  step?: number
 }
 
 export type EntityPlan = {
@@ -86,6 +87,8 @@ type Draw = () => number
 type At = { base: string, entity: string, n: number, path: string, name: string }
 
 type Text = { text: string, free: boolean }
+
+type Piece = { text: string, c: number[], room: number }
 
 type StringSpec = Extract<Spec, { t: 'string' }>
 
@@ -171,6 +174,16 @@ function put<T>(row: { [key: string]: T }, key: string, value: T): void {
   Object.defineProperty(row, key, {
     value, enumerable: true, writable: true, configurable: true,
   })
+}
+
+
+// A value read out of a plan is copied, so that a caller who changes one record changes no other.
+function copy(value: Json): Json {
+  if (Array.isArray(value)) return value.map(copy)
+  if (null === value || 'object' !== typeof value) return value
+  const out: { [key: string]: Json } = {}
+  for (const key of Object.keys(value)) put(out, key, copy(value[key]))
+  return out
 }
 
 
@@ -413,26 +426,39 @@ function classChar(ranges: number[], draw: Draw): string {
 }
 
 
-// `want` is the length to reach; the first repeat that can stretch takes up the slack.
-function fromPattern(nodes: PatNode[], draw: Draw, want: number, out: { text: string }): void {
+// A repeat of one class that may stretch is laid at its least, with the room it has to grow.
+function lay(nodes: PatNode[], draw: Draw, stretch: boolean, out: Piece[]): void {
   for (const node of nodes) {
     if ('c' in node) {
-      out.text += classChar(node.c, draw)
+      out.push({ text: classChar(node.c, draw), c: node.c, room: 0 })
     }
     else if ('g' in node) {
-      fromPattern(pick(draw, node.g), draw, want, out)
+      lay(pick(draw, node.g), draw, stretch, out)
+    }
+    else if (stretch && 'c' in node.q) {
+      const piece: Piece = { text: '', c: node.q.c, room: node.max < 0 ? Infinity : node.max - node.min }
+      for (let i = 0; i < node.min; i++) piece.text += classChar(node.q.c, draw)
+      out.push(piece)
     }
     else {
-      const open = node.max < 0
-      const most = open ? node.min + 3 : Math.min(node.max, node.min + 6)
-      let count = node.min + below(draw, most - node.min + 1)
-      if (0 <= want && 'c' in node.q) {
-        const slack = Math.max(node.min, want - out.text.length)
-        count = open ? slack : Math.min(node.max, slack)
-      }
-      for (let i = 0; i < count; i++) fromPattern([node.q], draw, want, out)
+      const most = node.max < 0 ? node.min + 3 : Math.min(node.max, node.min + 6)
+      const count = node.min + below(draw, most - node.min + 1)
+      for (let i = 0; i < count; i++) lay([node.q], draw, stretch, out)
     }
   }
+}
+
+
+// `want` is the length to reach, or -1. The whole walk is laid before the slack is shared out,
+// first repeat first, so that whatever follows a repeat keeps its room.
+function fromPattern(nodes: PatNode[], draw: Draw, want: number): string {
+  const pieces: Piece[] = []
+  lay(nodes, draw, 0 <= want, pieces)
+  let slack = want - pieces.reduce((n, p) => n + p.text.length, 0)
+  for (const p of pieces) {
+    for (; 0 < slack && 0 < p.room; slack--, p.room--) p.text += classChar(p.c, draw)
+  }
+  return pieces.map((p) => p.text).join('')
 }
 
 
@@ -448,12 +474,13 @@ function fit(text: string, spec: StringSpec, draw: Draw): string {
 }
 
 
-// The length a pattern is stretched to on try `k`, falling so that a fixed tail still fits.
+// The length a pattern is stretched to on try `k`: each readable length the schema admits, longest first.
 function wanted(spec: StringSpec, k: number): number {
   if (undefined === spec.min && undefined === spec.max) return -1
+  const least = spec.min ?? 0
   const most = undefined === spec.min ? Math.min(spec.max as number, 12) :
     Math.min(spec.max ?? spec.min + 4, spec.min + 4)
-  return Math.max(0, most - (k - 1) * Math.max(1, Math.ceil(most / (TRIES - 2))))
+  return most - (k - 1) % Math.max(1, most - least + 1)
 }
 
 
@@ -495,6 +522,14 @@ function decimals(step: number): number {
 
 function exact(x: number): number {
   return Math.round(x * 1e6) / 1e6
+}
+
+
+function within(spec: NumberSpec, x: number): boolean {
+  const step = spec.step
+  return (undefined === spec.min || (spec.xmin ? spec.min < x : spec.min <= x)) &&
+    (undefined === spec.max || (spec.xmax ? x < spec.max : x <= spec.max)) &&
+    (undefined === step || !(0 < step) || Math.abs(x / step - Math.round(x / step)) < 1e-9)
 }
 
 
@@ -582,9 +617,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
         text = shaped
       }
       else if (0 < k && undefined !== spec.pat) {
-        const out = { text: '' }
-        fromPattern(spec.pat, draw, wanted(spec, k), out)
-        text = out.text
+        text = fromPattern(spec.pat, draw, wanted(spec, k))
       }
       else {
         const made = 0 === k ? readable(ts, at, draw) : plain(k, draw)
@@ -601,46 +634,62 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
     const integer = 'integer' === spec.t
     const [hlo, hhi, hdec] = numberHint(tokens(at.name), integer)
     const stepped = undefined !== spec.step && 0 < spec.step
-    const dec = integer ? 0 : stepped ? decimals(spec.step as number) : hdec
-    const scale = POW[dec]
-    // A whole number is left as it is: rounding it through a fraction can move a large one.
-    const scaled = (x: number): number => 1 === scale ? x : exact(x * scale)
     const [lo, hi] = bounds(spec, hlo, hhi)
-    let a = Math.ceil(scaled(lo))
-    let b = Math.floor(scaled(hi))
-    if (spec.xmin && undefined !== spec.min && a <= scaled(spec.min)) {
-      a = Math.floor(scaled(spec.min)) + 1
+
+    // The candidates at `dec` places: whole multiples of `unit`, from `a` to `b`, over `scale`.
+    const candidates = (dec: number): { a: number, b: number, unit: number, scale: number } => {
+      const scale = POW[dec]
+      // A whole number is left as it is: rounding it through a fraction can move a large one.
+      const scaled = (x: number): number => 1 === scale ? x : exact(x * scale)
+      let a = Math.ceil(scaled(lo))
+      let b = Math.floor(scaled(hi))
+      if (spec.xmin && undefined !== spec.min && a <= scaled(spec.min)) {
+        a = Math.floor(scaled(spec.min)) + 1
+      }
+      if (spec.xmax && undefined !== spec.max && b >= scaled(spec.max)) {
+        b = Math.ceil(scaled(spec.max)) - 1
+      }
+      let unit = 1
+      if (stepped) {
+        unit = Math.max(1, Math.round((spec.step as number) * scale))
+        a = Math.ceil(a / unit)
+        b = Math.floor(b / unit)
+      }
+      return { a, b, unit, scale }
     }
-    if (spec.xmax && undefined !== spec.max && b >= scaled(spec.max)) {
-      b = Math.ceil(scaled(spec.max)) - 1
-    }
-    let unit = 1
-    if (stepped) {
-      unit = Math.max(1, Math.round((spec.step as number) * scale))
-      a = Math.ceil(a / unit)
-      b = Math.floor(b / unit)
-    }
-    if (b < a) {
+
+    let dec = integer ? 0 : stepped ? decimals(spec.step as number) : hdec
+    let c = candidates(dec)
+    // The name's precision gives way to a range too narrow for it.
+    while (c.b < c.a && !integer && !stepped && dec < POW.length - 1) c = candidates(++dec)
+    if (c.b < c.a) {
       miss(at, 'no number lies within the bounds')
-      b = a
+      c.b = c.a
     }
-    return ((a + below(draw, b - a + 1)) * unit) / scale
+    return ((c.a + below(draw, c.b - c.a + 1)) * c.unit) / c.scale
   }
 
   const idOf = (ent: EntityPlan, n: number): string | number | null => {
     const id = ent.id
     if (undefined === id) return null
-    if ('integer' === id.as) return (id.base ?? 0) + n
     if ('uuid' === id.as) {
       return hash32('id\n' + ent.name).toString(16).padStart(8, '0') +
         '-0000-4000-8000-' + n.toString(16).padStart(12, '0')
     }
-    const field = 'spec' === id.as ? ent.fields.find((f) => f.n === id.field) : undefined
-    if (undefined !== field) {
-      const base = seed + '\n' + ent.name + '\n' + n
-      return make(field.s, { base, entity: ent.name, n, path: id.field, name: id.field }) as string | number
+    const field = ent.fields.find((f) => f.n === id.field)
+    const at = { base: seed + '\n' + ent.name + '\n' + n, entity: ent.name, n, path: id.field, name: id.field }
+    if ('spec' === id.as && undefined !== field) {
+      return make(field.s, at) as string | number
     }
-    return (id.lead ?? ent.name + '-') + pad(n, id.width ?? 4)
+
+    const value = 'integer' === id.as ? (id.base ?? 0) + n * (id.step ?? 1) :
+      (id.lead ?? ent.name + '-') + pad(n, id.width ?? 4)
+    const spec = field?.s
+    const meets = undefined === spec ? true :
+      'string' === spec.t ? fits(String(value), spec) :
+        'integer' === spec.t || 'number' === spec.t ? within(spec, Number(value)) : true
+    if (!meets) miss(at, 'the numbered id runs past what the schema admits')
+    return value
   }
 
   const ancestor = (ent: EntityPlan, n: number, target: string, hops: number): number => {
@@ -658,6 +707,10 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
     const out: { param: string, field?: string, id: string | number }[] = []
     for (const parent of ent.parents) {
       if (!own(plan.entity, parent.entity)) continue
+      if (0 === size(parent.entity)) {
+        const path = parent.field ?? parent.param
+        miss({ base: '', entity: ent.name, n, path, name: path }, 'no ' + parent.entity + ' record to sit under')
+      }
       const id = idOf(plan.entity[parent.entity], ancestor(ent, n, parent.entity, 0))
       if (null !== id) out.push({ param: parent.param, field: parent.field, id })
     }
@@ -667,6 +720,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
   const arrayOf = (spec: Extract<Spec, { t: 'array' }>, at: At): Json[] => {
     const lo = spec.min ?? Math.min(1, spec.max ?? 1)
     const hi = Math.max(lo, spec.max ?? lo + 2)
+    if (undefined !== spec.max && spec.max < lo) miss(at, 'no length lies within the bounds')
     const draw = stream(at.base + '\n' + at.path + '\n#')
     const length = lo + below(draw, hi - lo + 1)
 
@@ -681,7 +735,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
         deck[j] = held
       }
       if (deck.length < lo) miss(at, 'too few distinct items')
-      return deck.slice(0, Math.min(length, deck.length))
+      return deck.slice(0, Math.min(length, deck.length)).map(copy)
     }
 
     const out: Json[] = []
@@ -705,8 +759,9 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
   }
 
   const mapOf = (spec: Extract<Spec, { t: 'map' }>, at: At): Row => {
-    const lo = spec.min ?? 1
+    const lo = spec.min ?? Math.min(1, spec.max ?? 1)
     const hi = Math.max(lo, spec.max ?? Math.max(lo, 2))
+    if (undefined !== spec.max && spec.max < lo) miss(at, 'no size lies within the bounds')
     const draw = stream(at.base + '\n' + at.path + '\n#')
     const length = lo + below(draw, hi - lo + 1)
     const out: Row = {}
@@ -730,9 +785,9 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
       case 'null':
         return null
       case 'enum':
-        return 0 === spec.values.length ? null : pick(stream(at.base + '\n' + at.path), spec.values)
+        return 0 === spec.values.length ? null : copy(pick(stream(at.base + '\n' + at.path), spec.values))
       case 'const':
-        return spec.value
+        return copy(spec.value)
       case 'array':
         return arrayOf(spec, at)
       case 'map':
@@ -747,6 +802,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
       }
       case 'ref': {
         const to = own(plan.entity, spec.entity) ? plan.entity[spec.entity] : undefined
+        if (undefined !== to && 0 === size(to.name)) miss(at, 'no ' + to.name + ' record to refer to')
         const draw = stream(at.base + '\n' + at.path)
         const id = undefined === to ? null : idOf(to, 1 + below(draw, Math.max(1, size(to.name))))
         return null === id ? spec.entity + '-' + pad(1 + below(draw, 9), 4) : id

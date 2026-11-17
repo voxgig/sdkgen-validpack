@@ -27,14 +27,20 @@ generated library, and the suite compiles one for each definition it holds.
 
 An id is numbered, and where the schema allows it carries the entity's name.
 The component finds a form the id's schema admits and writes that form into
-the plan: the text before the number, and the number's width. A parent's id
+the plan: the text before the number, and the number's width. A number id is
+a first id and a step, the least whole multiple of `multipleOf`. Ids count up
+from the first positive multiple the bounds admit, or down from the last
+where they admit none. An id past the bounds is still returned, and recorded
+as a miss. A parent's id
 is found by the same arithmetic in every record, so a child can name a parent
 without the parent having been generated. Only an id whose schema admits no
 numbered form is drawn from the stream, and such ids can repeat.
 
 A record's parent is taken in turn from the records its parent entity starts
 with, and a grandparent is that parent's own parent. Each parent therefore
-has children, and a record never names a chain that does not exist.
+has children, and a record never names a chain that does not exist. The one
+exception is a parent entity that starts with no records: the child names
+the id its first record would have, and the miss is recorded.
 
 A pattern is compiled, at generation, into a small tree the engine can walk.
 The compiler accepts only what it can generate from, and it is held to the

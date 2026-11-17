@@ -148,6 +148,12 @@ function thingPlan(schema, extra = {}) {
 
 const specOf = (plan, name) => plan.entity.thing.fields.find((f) => f.n === name)?.s
 
+// A plan of one entity `e`, with no id, that holds `fields`.
+const planOf = (fields) => ({
+  version: 1, api: 'x', source: 'definition', seed: '1', count: 1, notes: [],
+  entity: { e: { name: 'e', source: 'definition', parents: [], fields } },
+})
+
 
 describe('ts-seed: the plan', () => {
 
@@ -158,6 +164,7 @@ describe('ts-seed: the plan', () => {
       properties: {
         id: { type: 'string' },
         size: { type: 'integer', minimum: 2, maximum: 9, multipleOf: 3 },
+        half: { type: 'integer', multipleOf: 2.5 },
         ratio: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 1 },
         old: { type: 'number', minimum: 0, exclusiveMinimum: true, maximum: 1, exclusiveMaximum: true },
         code: { type: 'string', minLength: 2, maxLength: 8, pattern: '^[a-z]+$', format: 'custom' },
@@ -176,6 +183,7 @@ describe('ts-seed: the plan', () => {
     deepStrictEqual(plan.notes, [])
     strictEqual(plan.source, 'definition')
     deepStrictEqual(specOf(plan, 'size'), { t: 'integer', min: 2, max: 9, step: 3 })
+    deepStrictEqual(specOf(plan, 'half'), { t: 'integer', step: 5 })
     deepStrictEqual(specOf(plan, 'ratio'), { t: 'number', min: 0, xmin: true, max: 1, xmax: true })
     deepStrictEqual(specOf(plan, 'old'), { t: 'number', min: 0, max: 1, xmin: true, xmax: true })
     deepStrictEqual(specOf(plan, 'code'), {
@@ -199,10 +207,11 @@ describe('ts-seed: the plan', () => {
 
 
   test('an allOf is merged, and a union gives its first branch that is not null', () => {
+    const meta = (props, required = []) => ({ type: 'object', required, properties: props })
     const plan = thingPlan({
       allOf: [
-        { type: 'object', required: ['id'], properties: { id: { type: 'string' }, n: { type: 'integer', minimum: 1, maximum: 50 } } },
-        { type: 'object', required: ['n'], properties: { n: { type: 'integer', minimum: 5 }, extra: { type: 'boolean' } } },
+        meta({ id: { type: 'string' }, n: { type: 'integer', minimum: 1, maximum: 50 }, meta: meta({ a: { type: 'string', maxLength: 3 } }) }, ['id']),
+        meta({ n: { type: 'integer', minimum: 5 }, extra: { type: 'boolean' }, meta: meta({ b: { type: 'boolean' } }, ['a']) }, ['n']),
       ],
       properties: {
         either: { oneOf: [{ type: 'null' }, { type: 'integer', minimum: 3 }, { type: 'string' }] },
@@ -211,8 +220,11 @@ describe('ts-seed: the plan', () => {
     })
 
     deepStrictEqual(plan.entity.thing.fields.map((f) => [f.n, f.r]),
-      [['id', true], ['n', true], ['extra', false], ['either', false], ['tight', false]])
-    deepStrictEqual(specOf(plan, 'n'), { t: 'integer', min: 5 })
+      [['id', true], ['n', true], ['meta', false], ['extra', false], ['either', false], ['tight', false]])
+    // A property both parts name is held to both of them.
+    deepStrictEqual(specOf(plan, 'n'), { t: 'integer', min: 5, max: 50 })
+    deepStrictEqual(specOf(plan, 'meta').fields, [
+      { n: 'a', r: true, s: { t: 'string', max: 3 } }, { n: 'b', r: false, s: { t: 'boolean' } }])
     deepStrictEqual(specOf(plan, 'either'), { t: 'integer', min: 3 })
     deepStrictEqual(specOf(plan, 'tight'), { t: 'integer', min: 4, max: 9 })
     deepStrictEqual(plan.notes, [{ entity: 'thing', field: 'either', note: 'the first of 2 alternatives is used' }])
@@ -353,6 +365,14 @@ describe('ts-seed: the plan', () => {
     deepStrictEqual(idOf({ type: 'integer' })[0], { field: 'id', as: 'integer', base: 0 })
     deepStrictEqual(idOf({ type: 'integer', minimum: 1000 })[0], { field: 'id', as: 'integer', base: 999 })
     deepStrictEqual(idOf({ type: 'integer', minimum: 10, exclusiveMinimum: true })[0], { field: 'id', as: 'integer', base: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: -5 })[0], { field: 'id', as: 'integer', base: 0 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: 10, multipleOf: 10 })[0], { field: 'id', as: 'integer', base: 0, step: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: 15, multipleOf: 10 })[0], { field: 'id', as: 'integer', base: 10, step: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: -100, maximum: -1 })[0], { field: 'id', as: 'integer', base: 0, step: -1 })
+    deepStrictEqual(idOf({ type: 'number', maximum: -1, multipleOf: 2.5 })[0], { field: 'id', as: 'integer', base: 0, step: -5 })
+    const [fraction, said] = idOf({ type: 'number', minimum: 0.2, maximum: 0.8 })
+    deepStrictEqual(fraction, { field: 'id', as: 'spec' })
+    deepStrictEqual(said.map((n) => n.note), ['no numbered id meets the schema, so ids are drawn from it and can repeat'])
     deepStrictEqual(idOf({ type: 'string', pattern: '^BK-[0-9]{6}$' })[0], { field: 'id', as: 'text', lead: 'BK-', width: 6 })
     deepStrictEqual(idOf({ type: 'string', pattern: '^[A-Za-z0-9_.-]+$' })[0], { field: 'id', as: 'text', lead: 'thing-', width: 4 })
     deepStrictEqual(idOf({ type: 'string', maxLength: 8 })[0], { field: 'id', as: 'text', lead: 'thi-', width: 4 })
@@ -771,6 +791,8 @@ describe('ts-seed: from the definitions', () => {
       ok(shop.records('author').some((a) => a.id === book.author_id), 'a book by no author')
       ok(book.created_at < '2026', 'created in the early window')
       const [review] = shop.records('review')
+      deepStrictEqual(shop.records('review').map((r) => r.id), [1000, 1010, 1020, 1030, 1040])
+      ok(apis.bookshop.files['README.md'].includes('| `review` | `Review` | `id`: `1000` |'), 'the README names another first review id')
       ok(/^[A-Z].* .*\.$/.test(review.body), review.body)
       ok(/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(review.reviewer.name), review.reviewer.name)
       strictEqual(Object.prototype.hasOwnProperty.call(review.reviewer, 'secret'), false)
@@ -976,6 +998,154 @@ describe('ts-seed: from the definitions', () => {
       strictEqual(Object.getPrototypeOf(record), Object.prototype)
       strictEqual(JSON.parse(JSON.stringify(record)).constructor, record.constructor)
       strictEqual(Object.getOwnPropertyDescriptor(record, '__proto__').value, 5)
+    })
+
+
+    test('a range too narrow for the precision a name suggests is drawn more finely', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seed = makeSeedFor(planOf([
+        { n: 'ratio', r: true, s: { t: 'number', min: 0.001, max: 0.009 } },
+        { n: 'rate', r: true, s: { t: 'number', min: 0, max: 0.01, xmin: true, xmax: true } },
+        { n: 'count', r: true, s: { t: 'number', min: 0.1, max: 0.5 } },
+      ]))
+      const places = (x, d) => Number(x.toFixed(d)) === x
+      for (let n = 1; n <= 300; n++) {
+        const r = seed.record('e', n)
+        ok(0.001 <= r.ratio && r.ratio <= 0.009 && places(r.ratio, 3), 'ratio ' + r.ratio)
+        ok(0 < r.rate && r.rate < 0.01 && places(r.rate, 3), 'rate ' + r.rate)
+        ok(0.1 <= r.count && r.count <= 0.5 && places(r.count, 1), 'count ' + r.count)
+      }
+      deepStrictEqual(seed.misses(), [])
+    })
+
+
+    test('a number id keeps to its step and its bounds, and an id past them is reported', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seeded = (id, count) => {
+        const schema = { type: 'object', required: ['id', 'n'], properties: { id, n: { type: 'integer', multipleOf: 2.5 } } }
+        const seed = makeSeedFor(thingPlan(schema), { count })
+        for (const record of seed.records('thing')) {
+          deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+        }
+        return seed
+      }
+
+      deepStrictEqual(seeded({ type: 'integer', minimum: 10, multipleOf: 10 }, 3).records('thing').map((r) => r.id), [10, 20, 30])
+      const below = seeded({ type: 'integer', minimum: -100, maximum: -1 }, 100)
+      deepStrictEqual(below.records('thing').slice(0, 3).map((r) => r.id), [-1, -2, -3])
+      deepStrictEqual(below.misses(), [])
+      strictEqual(below.id('thing', 101), -101)
+      deepStrictEqual(below.misses().map((m) => [m.entity, m.n, m.path]), [['thing', 101, 'id']])
+
+      const text = makeSeedFor({
+        ...planOf([]),
+        entity: {
+          t: {
+            name: 't', source: 'definition', parents: [], id: { field: 'id', as: 'text', lead: 'T', width: 1 },
+            fields: [{ n: 'id', r: true, s: { t: 'string', re: '^T[0-9]$' } }],
+          },
+        },
+      })
+      deepStrictEqual([text.id('t', 9), text.id('t', 10)], ['T9', 'T10'])
+      deepStrictEqual(text.misses().map((m) => [m.entity, m.n, m.path]), [['t', 10, 'id']])
+    })
+
+
+    test('a pattern stretched to a length leaves room for whatever follows the repeat', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const shaped = (source, length) => ({ t: 'string', re: source, pat: compilePattern(source), min: length, max: length })
+      const fields = [
+        { n: 'code', r: true, s: shaped('^a+b+$', 20) },
+        { n: 'tail', r: true, s: shaped('^[a-z]+-(xy|z)[0-9]{2}$', 12) },
+        // A walk that takes the group is too long whatever is wanted, so a later try must still want five.
+        { n: 'serial', r: true, s: shaped('^[a-z]+(-[0-9]{9})?$', 5) },
+      ]
+      for (const value of SEEDS) {
+        const seed = makeSeedFor(planOf(fields), { seed: value })
+        for (let n = 1; n <= 300; n++) {
+          const r = seed.record('e', n)
+          for (const f of fields) {
+            ok(new RegExp(f.s.re).test(r[f.n]) && f.s.min === r[f.n].length, f.n + ': ' + JSON.stringify(r[f.n]))
+          }
+        }
+        deepStrictEqual(seed.misses(), [], 'seed ' + value)
+      }
+      strictEqual(makeSeedFor(planOf(fields)).record('e', 1).code, 'a'.repeat(19) + 'b')
+    })
+
+
+    test('allOf parts that both constrain a property hold it to both', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const schema = {
+        allOf: [
+          { type: 'object', required: ['id'], properties: { id: { type: 'string' }, n: { type: 'integer', maximum: 2 } } },
+          { type: 'object', required: ['n'], properties: { n: { type: 'integer', minimum: 1 } } },
+        ],
+      }
+      const seed = makeSeedFor(thingPlan(schema), { count: 40 })
+      for (const record of seed.records('thing')) {
+        deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+      }
+      deepStrictEqual(seed.misses(), [])
+    })
+
+
+    test('a value taken from an enum or a const is a copy, so changing a record changes no other', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seed = makeSeedFor(planOf([
+        { n: 'shape', r: true, s: { t: 'enum', values: [{ side: 1, tags: ['a'] }] } },
+        { n: 'fixed', r: true, s: { t: 'const', value: [1, { two: 2 }] } },
+        { n: 'picks', r: true, s: { t: 'array', items: { t: 'enum', values: [{ k: 'x' }, { k: 'y' }] }, min: 2, max: 2, unique: true } },
+      ]))
+      const plan = JSON.stringify(seed.plan)
+      const was = JSON.stringify(seed.record('e', 1))
+
+      const first = seed.record('e', 1)
+      first.shape.side = 9
+      first.shape.tags.push('b')
+      first.fixed[1].two = 3
+      first.picks[0].k = 'z'
+
+      strictEqual(JSON.stringify(seed.record('e', 1)), was)
+      strictEqual(JSON.stringify(seed.plan), plan)
+    })
+
+
+    test('a map with no room for a property is empty, and bounds that cross are reported', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const schema = {
+        type: 'object', required: ['id', 'bag'],
+        properties: { id: { type: 'string' }, bag: { type: 'object', additionalProperties: { type: 'string' }, maxProperties: 0 } },
+      }
+      const seed = makeSeedFor(thingPlan(schema), { count: 20 })
+      for (const record of seed.records('thing')) {
+        deepStrictEqual(record.bag, {})
+        deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+      }
+      deepStrictEqual(seed.misses(), [])
+
+      const crossed = makeSeedFor(planOf([
+        { n: 'list', r: true, s: { t: 'array', items: { t: 'boolean' }, min: 3, max: 1 } },
+        { n: 'bag', r: true, s: { t: 'map', values: { t: 'boolean' }, min: 3, max: 1 } },
+      ]))
+      crossed.record('e', 1)
+      deepStrictEqual(crossed.misses().map((m) => [m.path, m.why]),
+        [['list', 'no length lies within the bounds'], ['bag', 'no size lies within the bounds']])
+    })
+
+
+    test('a record under an entity with no records is reported, and so is a field that refers to one', () => {
+      const solar = load(apis.solardemo.dir).makeSeed({ counts: { planet: 0, moon: 2 } })
+      deepStrictEqual(solar.all().planet, [])
+      deepStrictEqual(solar.records('moon').map((r) => r.planet_id), ['planet-0001', 'planet-0001'])
+      deepStrictEqual(solar.parents('moon', 2), { planet_id: 'planet-0001' })
+      deepStrictEqual(solar.misses(),
+        [1, 2].map((n) => ({ entity: 'moon', n, path: 'planet_id', why: 'no planet record to sit under' })))
+
+      const shop = load(apis.bookshop.dir).makeSeed({ counts: { author: 0, book: 2 } })
+      shop.records('book')
+      deepStrictEqual(shop.misses(),
+        [1, 2].map((n) => ({ entity: 'book', n, path: 'author_id', why: 'no author record to refer to' })))
     })
   })
 

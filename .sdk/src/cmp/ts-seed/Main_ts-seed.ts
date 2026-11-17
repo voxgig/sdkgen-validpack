@@ -75,7 +75,7 @@ function idNote(ent: EntityPlan): string {
   const id = ent.id
   if (undefined === id) return ''
   if ('text' === id.as) return '`' + id.field + '`: `' + (id.lead ?? '') + '1'.padStart(id.width ?? 4, '0') + '`'
-  if ('integer' === id.as) return '`' + id.field + '`: `' + ((id.base ?? 0) + 1) + '`'
+  if ('integer' === id.as) return '`' + id.field + '`: `' + ((id.base ?? 0) + (id.step ?? 1)) + '`'
   return '`' + id.field + '`: ' + ('uuid' === id.as ? 'a UUID' : 'from its schema')
 }
 
