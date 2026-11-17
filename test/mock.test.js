@@ -1269,6 +1269,31 @@ describe('ts-mock: from the definitions', () => {
     })
 
 
+    test('a segment of literal text and a parameter matches its text however it is sent', async () => {
+      const t = thing(apis.solardemo)
+      const load = (path) => ({ ...t.routes.routes.find((r) => 'load' === r.op), path })
+      const routes = { ...t.routes, routes: [...t.routes.routes, load('/look/pre-{id}'), load('/caf\u00e9/{id}-x')] }
+      const s = await serve(apis.solardemo, {}, routes, t.library)
+      try {
+        for (const id of ['b', 'a/b']) strictEqual((await s.call('PUT', '/thing/' + encodeURIComponent(id), { body: {} })).status, 201)
+        for (const [path, id] of [
+          ['/look/pre-b', 'b'], ['/look/%70re-b', 'b'], ['/look/pre%2db', 'b'], ['/look/pre%2Db', 'b'],
+          ['/look/pre-a%2Fb', 'a/b'], ['/look/%70%72%65%2Da%2fb', 'a/b'],
+          ['/caf%C3%A9/b-x', 'b'], ['/caf%c3%a9/a%2Fb-x', 'a/b'], ['/caf\u00e9/b-x', 'b'],
+        ]) {
+          const res = await s.call('GET', path)
+          deepStrictEqual([res.status, res.body.id], [200, id], path)
+        }
+        for (const path of ['/look/Pre-b', '/look/%50re-b', '/look/pre-', '/look/%70re', '/caf%C3%89/b-x']) {
+          strictEqual((await s.call('GET', path)).status, 404, path)
+        }
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
     test('a created id is one no record holds, after a create by a chosen id too', async () => {
       const t = thing(apis.solardemo)
       const s = await serve(apis.solardemo, { count: 1 }, t.routes, t.library)
