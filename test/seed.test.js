@@ -1132,6 +1132,21 @@ describe('ts-seed: from the definitions', () => {
       deepStrictEqual(crossed.misses().map((m) => [m.path, m.why]),
         [['list', 'no length lies within the bounds'], ['bag', 'no size lies within the bounds']])
     })
+
+
+    test('a record under an entity with no records is reported, and so is a field that refers to one', () => {
+      const solar = load(apis.solardemo.dir).makeSeed({ counts: { planet: 0, moon: 2 } })
+      deepStrictEqual(solar.all().planet, [])
+      deepStrictEqual(solar.records('moon').map((r) => r.planet_id), ['planet-0001', 'planet-0001'])
+      deepStrictEqual(solar.parents('moon', 2), { planet_id: 'planet-0001' })
+      deepStrictEqual(solar.misses(),
+        [1, 2].map((n) => ({ entity: 'moon', n, path: 'planet_id', why: 'no planet record to sit under' })))
+
+      const shop = load(apis.bookshop.dir).makeSeed({ counts: { author: 0, book: 2 } })
+      shop.records('book')
+      deepStrictEqual(shop.misses(),
+        [1, 2].map((n) => ({ entity: 'book', n, path: 'author_id', why: 'no author record to refer to' })))
+    })
   })
 
 

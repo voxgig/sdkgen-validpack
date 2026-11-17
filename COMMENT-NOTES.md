@@ -38,7 +38,9 @@ numbered form is drawn from the stream, and such ids can repeat.
 
 A record's parent is taken in turn from the records its parent entity starts
 with, and a grandparent is that parent's own parent. Each parent therefore
-has children, and a record never names a chain that does not exist.
+has children, and a record never names a chain that does not exist. The one
+exception is a parent entity that starts with no records: the child names
+the id its first record would have, and the miss is recorded.
 
 A pattern is compiled, at generation, into a small tree the engine can walk.
 The compiler accepts only what it can generate from, and it is held to the

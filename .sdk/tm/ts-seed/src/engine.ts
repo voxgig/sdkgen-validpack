@@ -707,6 +707,10 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
     const out: { param: string, field?: string, id: string | number }[] = []
     for (const parent of ent.parents) {
       if (!own(plan.entity, parent.entity)) continue
+      if (0 === size(parent.entity)) {
+        const path = parent.field ?? parent.param
+        miss({ base: '', entity: ent.name, n, path, name: path }, 'no ' + parent.entity + ' record to sit under')
+      }
       const id = idOf(plan.entity[parent.entity], ancestor(ent, n, parent.entity, 0))
       if (null !== id) out.push({ param: parent.param, field: parent.field, id })
     }
@@ -798,6 +802,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
       }
       case 'ref': {
         const to = own(plan.entity, spec.entity) ? plan.entity[spec.entity] : undefined
+        if (undefined !== to && 0 === size(to.name)) miss(at, 'no ' + to.name + ' record to refer to')
         const draw = stream(at.base + '\n' + at.path)
         const id = undefined === to ? null : idOf(to, 1 + below(draw, Math.max(1, size(to.name))))
         return null === id ? spec.entity + '-' + pad(1 + below(draw, 9), 4) : id
