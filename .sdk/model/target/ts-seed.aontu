@@ -1,0 +1,46 @@
+# Seeded test data for the API, as a TypeScript library. Wraps no language
+# target: every value is derived from the model and the API definition.
+
+main: kit: target: 'ts-seed': {
+
+  title: 'Seeded test data'
+  ext: ts
+  comment: line: "//"
+  module: name: '$$name$$'
+  base: 'BASE'
+  srcfeature: false
+
+  phase: {
+    entity:     { active: false }
+    feature:    { active: false }
+    readme:     { active: false }
+    agentguide: { active: false }
+    test:       { active: false }
+  }
+
+  # A project sets these in its own model: the seed a caller gets when it
+  # names none, and how many records each entity starts with.
+  seed: {
+    value: *'1' | string | number
+    count: *5 | number
+  }
+
+  deps: &: {
+    kind: *'prod' | string
+  }
+
+  deps: {
+    'typescript': { active: true, version: '^5.9.3', kind: dev }
+  }
+}
+
+
+main: kit: feature: &: target: 'ts-seed': deps: &: {
+  kind: *'prod' | string
+}
+
+
+# Nothing to publish to a registry: a release is a git tag cut at the root.
+main: kit: target: 'ts-seed': publish: {
+  tag: { via: 'root' }
+}

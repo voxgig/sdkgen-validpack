@@ -1,0 +1,67 @@
+{
+  "name": "@voxgig/sdkgen-validpack",
+  "version": "0.0.1",
+  "description": "Validation targets for the Voxgig SDK Generator: seeded test data for an API.",
+  "private": true,
+  "type": "commonjs",
+  "license": "MIT",
+  "keywords": [
+    "voxgig",
+    "sdkgen",
+    "sdkgen-package",
+    "test-data",
+    "seed",
+    "mock"
+  ],
+  "author": "Richard Rodger (http://richardrodger.com)",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/voxgig/sdkgen-validpack.git"
+  },
+  "files": [
+    ".sdk",
+    "sdkgen-package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "pretest": "tsc",
+    "test": "node tools/comment-gate.cjs && node tools/dep-gate.cjs && node --test tools/dep-gate.test.cjs && node --enable-source-maps --test test/*.test.js",
+    "test-some": "node --enable-source-maps --test-name-pattern=\"$npm_config_pattern\" --test test/*.test.js",
+    "watch": "tsc -w",
+    "build": "tsc",
+    "clean": "rm -rf node_modules package-lock.json .build",
+    "check-cmp": "tsc -p tsconfig.json --noEmit",
+    "check-package": "voxgig-sdkgen package check ."
+  },
+  "_peer_comment": [
+    "The components import @voxgig/sdkgen and @voxgig/apidef by name, so both",
+    "are declared. Peers rather than dependencies: a consumer has them already,",
+    "through sdkgen, and a second copy at another version is the one outcome",
+    "worth preventing.",
+    "",
+    "The sdkgen floor is the oldest published version this suite has been run",
+    "against, and `engines.sdkgen` in sdkgen-package.json repeats it: a suite",
+    "test holds the two together.",
+    "",
+    "memfs is required by @voxgig/sdkgen/testkit at run time and reaches no",
+    "consumer of sdkgen, so it is declared here, pinned to sdkgen's own pin.",
+    "@types/node is for the components, which read the model with Node's types.",
+    "yaml is how the suite reads the definitions it checks records against.",
+    "",
+    "`private` because nothing is published yet: a project links a checkout.",
+    "Remove it with the first release."
+  ],
+  "peerDependencies": {
+    "@voxgig/apidef": ">=8.25.0",
+    "@voxgig/sdkgen": ">=4.44.0"
+  },
+  "devDependencies": {
+    "@types/node": ">=24",
+    "@voxgig/apidef": ">=8.25.0",
+    "@voxgig/sdkgen": ">=4.44.0",
+    "aontu": ">=0.76.3",
+    "memfs": "4.68.1",
+    "typescript": "7.0.2",
+    "yaml": "^2.9.1"
+  }
+}

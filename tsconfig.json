@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Compiles the targets' components. They run inside a consumer project,",
+    "so a missing import or a renamed export is invisible without this.",
+    "",
+    "fragment/ is excluded: fragments are template source carrying placeholder",
+    "tokens, not valid standalone modules. No target ships one today; the",
+    "exclusion stays so that adding one cannot break the build."
+  ],
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "node16",
+    "moduleResolution": "node16",
+    "strict": false,
+    "rootDir": ".sdk/src/cmp",
+    "outDir": ".build/cmp",
+    "skipLibCheck": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    ".sdk/src/cmp/**/*.ts"
+  ],
+  "exclude": [
+    ".sdk/src/cmp/**/fragment/**"
+  ]
+}
