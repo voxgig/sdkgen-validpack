@@ -272,6 +272,34 @@ function same(value: Json | undefined, wanted: string): boolean {
 }
 
 
+function held(value: Json | undefined, key: string): Json | undefined {
+  return isRow(value) && own(value, key) ? value[key] : undefined
+}
+
+
+// What a body may set, at any depth: a read-only value it sends is dropped, and the one held stays.
+function writable(value: Json, kept: Json | undefined, spec: SpecLike): Json {
+  if ('object' === spec.t && undefined !== spec.fields && isRow(value)) {
+    const out: Row = {}
+    for (const key of Object.keys(value)) {
+      const field = spec.fields.find((f) => f.n === key)
+      if (true === field?.ro) continue
+      put(out, key, undefined === field ? value[key] : writable(value[key], held(kept, key), field.s))
+    }
+    for (const f of spec.fields) {
+      const stays = held(kept, f.n)
+      if (true === f.ro && undefined !== stays) put(out, f.n, copy(stays))
+    }
+    return out
+  }
+  if ('array' === spec.t && undefined !== spec.items && Array.isArray(value)) {
+    const items = spec.items
+    return value.map((item, i) => writable(item, Array.isArray(kept) ? kept[i] : undefined, items))
+  }
+  return value
+}
+
+
 export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockOptions = {}): Mock {
   const Http: { createServer(handler: (req: Req, res: Res) => void): Server } = require('node:http')
 
@@ -413,7 +441,7 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const record: Row = {}
     for (const f of ent.fields) {
       if (undefined !== ent.id && f.n === ent.id.field && null !== id) put(record, f.n, id)
-      else if (own(given, f.n) && true !== f.ro) put(record, f.n, given[f.n])
+      else if (own(given, f.n) && true !== f.ro) put(record, f.n, writable(given[f.n], held(seeded, f.n), f.s))
       else if ((f.r || true === f.ro) && own(seeded, f.n)) put(record, f.n, seeded[f.n])
     }
     for (const key of Object.keys(given)) if (!known.has(key)) put(record, key, given[key])
@@ -439,7 +467,8 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const readOnly = new Set(ent.fields.filter((f) => true === f.ro).map((f) => f.n))
     for (const key of Object.keys(given)) {
       if ((undefined !== ent.id && key === ent.id.field) || readOnly.has(key)) continue
-      put(entry.record, key, given[key])
+      const field = ent.fields.find((f) => f.n === key)
+      put(entry.record, key, undefined === field ? given[key] : writable(given[key], held(entry.record, key), field.s))
     }
     for (const link of ent.parents) {
       if (undefined === link.field) continue

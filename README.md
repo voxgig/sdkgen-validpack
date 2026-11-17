@@ -177,8 +177,8 @@ path parameters the definition names.
   a JSON 404: `{ "code": "not_found", "message": "..." }`.
 - **An action**, a route the model marks with `$action`, answers the record
   it names, unchanged: the definition does not say what an action does.
-- **A field the definition marks read-only** is the mock's to set, so a body
-  cannot change it, and a write-only field is never sent back.
+- **A field the definition marks read-only**, at any depth, is the mock's to
+  set, so a body cannot change it, and a write-only field is never sent back.
 
 A path parameter that is neither the record's id nor a parent's id, such as a
 `{year}`, is accepted and ignored. A body that is not JSON, or holds no

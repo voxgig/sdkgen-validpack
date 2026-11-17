@@ -161,8 +161,8 @@ field keeps the records whose field has that value. A load, update, patch or
 remove finds its record by the path's id and parents, or answers 404. A create
 takes its id from the seed library's next record number, and fills each
 required field the body leaves out from that record. An update or a patch
-merges the body into the record. A field the definition marks read-only is the
-mock's to set, and a write-only field is never sent back.
+merges the body into the record. A field the definition marks read-only, at any
+depth, is the mock's to set, and a write-only field is never sent back.
 
 ${auth}
 

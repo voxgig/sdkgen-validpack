@@ -297,9 +297,9 @@ function freePort() {
 }
 
 // A started mock, and a way to ask it things that reads the answer whole.
-async function serve(made, options, routes) {
+async function serve(made, options, routes, library) {
   const lib = load(made[MOCK].dir)
-  const mock = undefined === routes ? lib.makeMock(options) : lib.makeMockFor(routes, lib.seedLibrary(), options)
+  const mock = undefined === routes ? lib.makeMock(options) : lib.makeMockFor(routes, library ?? lib.seedLibrary(), options)
   const server = await mock.listen(0)
   const call = async (method, path, opts = {}) => {
     const sent = undefined !== opts.raw ? opts.raw : undefined === opts.body ? undefined : JSON.stringify(opts.body)
@@ -316,6 +316,49 @@ async function serve(made, options, routes) {
 
 function seedOf(made, options) {
   return load(made[SEED].dir).makeSeed(options)
+}
+
+// One entity no definition here holds, `thing`: a read-only field inside an object and inside
+// a list, and a route for each operation, a create by a chosen id among them.
+function thing(made, lead = 'thing-') {
+  const engine = load(made[SEED].dir)
+  const plan = {
+    version: 1, api: 'thing', source: 'definition', seed: '1', count: 2, notes: [],
+    entity: {
+      thing: {
+        name: 'thing', source: 'definition', parents: [], id: { field: 'id', as: 'text', lead, width: 1 },
+        fields: [
+          { n: 'id', r: true, s: { t: 'string' } },
+          { n: 'name', r: true, s: { t: 'string' } },
+          {
+            n: 'info', r: true,
+            s: { t: 'object', fields: [{ n: 'stamp', r: true, ro: true, s: { t: 'string' } }, { n: 'note', r: true, s: { t: 'string' } }] },
+          },
+          {
+            n: 'parts', r: true,
+            s: {
+              t: 'array', min: 1, max: 1,
+              items: { t: 'object', fields: [{ n: 'made', r: true, ro: true, s: { t: 'string' } }, { n: 'size', r: true, s: { t: 'integer', min: 1, max: 9 } }] },
+            },
+          },
+        ],
+      },
+    },
+  }
+  const route = (op, method, path, status = 200) => ({
+    entity: 'thing', op, method, path, status, res: [], fill: [], req: { at: [] },
+    params: path.includes('{id}') ? [{ wire: 'id', name: 'id', id: true }] : [],
+  })
+  const routes = {
+    version: 1, api: 'thing', source: 'definition', seed: '', port: 0, prefix: '', local: false, auth: null, notes: [],
+    routes: [
+      route('list', 'GET', '/thing'), route('load', 'GET', '/thing/{id}'),
+      route('create', 'POST', '/thing', 201), route('create', 'PUT', '/thing/{id}', 201),
+      route('update', 'POST', '/thing/{id}'), route('patch', 'PATCH', '/thing/{id}'), route('remove', 'DELETE', '/thing/{id}', 204),
+    ],
+  }
+  const makeSeed = (options) => engine.makeSeedFor(plan, options)
+  return { routes, library: { makeSeed }, seed: makeSeed() }
 }
 
 // The response the definition declares for a route's success, as its author wrote it.
@@ -1189,6 +1232,34 @@ describe('ts-mock: from the definitions', () => {
         const held = await s.call('PUT', '/api/planet/planet-0001', { body: {} })
         deepStrictEqual([held.status, held.body.code], [409, 'conflict'])
         strictEqual(s.mock.records('planet').length, 6)
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
+    test('a read-only field is the mock\'s at any depth, on a create, an update and a patch', async () => {
+      const t = thing(apis.solardemo)
+      const s = await serve(apis.solardemo, {}, t.routes, t.library)
+      try {
+        const was = t.seed.record('thing', 1)
+        const updated = await s.call('POST', '/thing/thing-1',
+          { body: { info: { stamp: 'client', note: 'mine' }, parts: [{ made: 'client', size: 3 }] } })
+        deepStrictEqual(updated.body, { ...was, info: { stamp: was.info.stamp, note: 'mine' }, parts: [{ made: was.parts[0].made, size: 3 }] })
+
+        const patched = await s.call('PATCH', '/thing/thing-1', { body: { info: { note: 'again', stamp: 'client' } } })
+        deepStrictEqual(patched.body.info, { stamp: was.info.stamp, note: 'again' })
+        const left = await s.call('PATCH', '/thing/thing-1', { body: { info: { note: 'left out' }, parts: [{ size: 4 }] } })
+        deepStrictEqual([left.body.info, left.body.parts], [{ stamp: was.info.stamp, note: 'left out' }, [{ made: was.parts[0].made, size: 4 }]])
+        deepStrictEqual((await s.call('GET', '/thing/thing-1')).body, left.body)
+
+        const third = t.seed.record('thing', 3)
+        const made = await s.call('POST', '/thing',
+          { body: { name: 'New', info: { stamp: 'client', note: 'n' }, parts: [{ made: 'client', size: 2 }] } })
+        deepStrictEqual(made.body,
+          { id: 'thing-3', name: 'New', info: { stamp: third.info.stamp, note: 'n' }, parts: [{ made: third.parts[0].made, size: 2 }] })
+        ok(!JSON.stringify(s.mock.records('thing')).includes('client'))
       }
       finally {
         await s.close()
