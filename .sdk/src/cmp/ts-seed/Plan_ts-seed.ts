@@ -36,6 +36,7 @@ type IdPlan = {
   lead?: string
   width?: number
   base?: number
+  step?: number
 }
 
 type EntityPlan = {
@@ -98,6 +99,21 @@ function isNumber(v: any): v is number {
 
 function isCount(v: any): v is number {
   return Number.isInteger(v) && 0 <= v
+}
+
+
+function gcd(a: number, b: number): number {
+  return 0 === b ? a : gcd(b, a % b)
+}
+
+
+// The least whole number that is a multiple of `step`, where its decimals are few enough to find it.
+function wholeStep(step: number): number | undefined {
+  for (let places = 1; places <= 1e6; places *= 10) {
+    const scaled = Math.round(step * places)
+    if (0 < scaled && Math.abs(step * places - scaled) < 1e-9 * scaled) return scaled / gcd(scaled, places)
+  }
+  return undefined
 }
 
 
@@ -274,7 +290,9 @@ function numberSpec(schema: any, type: string): Spec {
     out.xmax = true
   }
 
-  if (isNumber(schema.multipleOf) && 0 < schema.multipleOf) out.step = schema.multipleOf
+  if (isNumber(schema.multipleOf) && 0 < schema.multipleOf) {
+    out.step = 'integer' === type ? wholeStep(schema.multipleOf) ?? schema.multipleOf : schema.multipleOf
+  }
   return out
 }
 
@@ -512,13 +530,33 @@ function numbered(pat: PatNode[] | undefined): { lead: string, widths: number[] 
 }
 
 
+// Whole ids, counting up from the first positive multiple of the step the bounds admit,
+// or down from the last where they admit none. Undefined where they admit no multiple.
+function countedId(spec: Spec): { base: number, step?: number } | undefined {
+  const unit = undefined === spec.step ? 1 : wholeStep(spec.step)
+  if (undefined === unit) return undefined
+
+  const lo = undefined === spec.min ? -Infinity :
+    spec.xmin ? Math.floor(spec.min / unit) + 1 : Math.ceil(spec.min / unit)
+  const hi = undefined === spec.max ? Infinity :
+    spec.xmax ? Math.ceil(spec.max / unit) - 1 : Math.floor(spec.max / unit)
+  if (hi < lo) return undefined
+
+  const step = hi < 1 ? -unit : unit
+  const first = (hi < 1 ? hi : Math.max(lo, 1)) * unit
+  return { base: first - step, ...(1 === step ? {} : { step }) }
+}
+
+
 function idPlan(name: string, field: Field, walk: Walk): IdPlan {
   const spec = field.s
   const inner = { ...walk, path: [field.n] }
 
   if ('integer' === spec.t || 'number' === spec.t) {
-    const floor = undefined === spec.min ? 0 : Math.ceil(spec.min) - (spec.xmin ? 0 : 1)
-    return { field: field.n, as: 'integer', base: Math.max(0, floor) }
+    const counted = countedId(spec)
+    if (undefined !== counted) return { field: field.n, as: 'integer', ...counted }
+    note(inner, 'no numbered id meets the schema, so ids are drawn from it and can repeat')
+    return { field: field.n, as: 'spec' }
   }
   if ('any' === spec.t) {
     return { field: field.n, as: 'text', lead: tokens(name).join('-') + '-', width: ID_WIDTH }
@@ -556,7 +594,7 @@ function idPlan(name: string, field: Field, walk: Walk): IdPlan {
 
 function idSample(id: IdPlan | undefined): string | number | undefined {
   if (undefined === id) return undefined
-  if ('integer' === id.as) return (id.base ?? 0) + 1
+  if ('integer' === id.as) return (id.base ?? 0) + (id.step ?? 1)
   if ('text' === id.as) return sample(id.lead ?? '', id.width ?? ID_WIDTH, 1)
   if ('uuid' === id.as) return '00000000-0000-4000-8000-000000000001'
   return undefined

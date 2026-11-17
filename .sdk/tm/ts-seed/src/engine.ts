@@ -36,6 +36,7 @@ export type IdPlan = {
   lead?: string
   width?: number
   base?: number
+  step?: number
 }
 
 export type EntityPlan = {
@@ -498,6 +499,14 @@ function exact(x: number): number {
 }
 
 
+function within(spec: NumberSpec, x: number): boolean {
+  const step = spec.step
+  return (undefined === spec.min || (spec.xmin ? spec.min < x : spec.min <= x)) &&
+    (undefined === spec.max || (spec.xmax ? x < spec.max : x <= spec.max)) &&
+    (undefined === step || !(0 < step) || Math.abs(x / step - Math.round(x / step)) < 1e-9)
+}
+
+
 // The readable range where the schema allows it, else a range of that width inside the schema's.
 function bounds(spec: NumberSpec, lo: number, hi: number): [number, number] {
   const { min, max } = spec
@@ -639,17 +648,24 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
   const idOf = (ent: EntityPlan, n: number): string | number | null => {
     const id = ent.id
     if (undefined === id) return null
-    if ('integer' === id.as) return (id.base ?? 0) + n
     if ('uuid' === id.as) {
       return hash32('id\n' + ent.name).toString(16).padStart(8, '0') +
         '-0000-4000-8000-' + n.toString(16).padStart(12, '0')
     }
-    const field = 'spec' === id.as ? ent.fields.find((f) => f.n === id.field) : undefined
-    if (undefined !== field) {
-      const base = seed + '\n' + ent.name + '\n' + n
-      return make(field.s, { base, entity: ent.name, n, path: id.field, name: id.field }) as string | number
+    const field = ent.fields.find((f) => f.n === id.field)
+    const at = { base: seed + '\n' + ent.name + '\n' + n, entity: ent.name, n, path: id.field, name: id.field }
+    if ('spec' === id.as && undefined !== field) {
+      return make(field.s, at) as string | number
     }
-    return (id.lead ?? ent.name + '-') + pad(n, id.width ?? 4)
+
+    const value = 'integer' === id.as ? (id.base ?? 0) + n * (id.step ?? 1) :
+      (id.lead ?? ent.name + '-') + pad(n, id.width ?? 4)
+    const spec = field?.s
+    const meets = undefined === spec ? true :
+      'string' === spec.t ? fits(String(value), spec) :
+        'integer' === spec.t || 'number' === spec.t ? within(spec, Number(value)) : true
+    if (!meets) miss(at, 'the numbered id runs past what the schema admits')
+    return value
   }
 
   const ancestor = (ent: EntityPlan, n: number, target: string, hops: number): number => {

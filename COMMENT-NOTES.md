@@ -27,7 +27,11 @@ generated library, and the suite compiles one for each definition it holds.
 
 An id is numbered, and where the schema allows it carries the entity's name.
 The component finds a form the id's schema admits and writes that form into
-the plan: the text before the number, and the number's width. A parent's id
+the plan: the text before the number, and the number's width. A number id is
+a first id and a step, the least whole multiple of `multipleOf`. Ids count up
+from the first positive multiple the bounds admit, or down from the last
+where they admit none. An id past the bounds is still returned, and recorded
+as a miss. A parent's id
 is found by the same arithmetic in every record, so a child can name a parent
 without the parent having been generated. Only an id whose schema admits no
 numbered form is drawn from the stream, and such ids can repeat.

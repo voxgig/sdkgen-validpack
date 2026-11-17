@@ -164,6 +164,7 @@ describe('ts-seed: the plan', () => {
       properties: {
         id: { type: 'string' },
         size: { type: 'integer', minimum: 2, maximum: 9, multipleOf: 3 },
+        half: { type: 'integer', multipleOf: 2.5 },
         ratio: { type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 1 },
         old: { type: 'number', minimum: 0, exclusiveMinimum: true, maximum: 1, exclusiveMaximum: true },
         code: { type: 'string', minLength: 2, maxLength: 8, pattern: '^[a-z]+$', format: 'custom' },
@@ -182,6 +183,7 @@ describe('ts-seed: the plan', () => {
     deepStrictEqual(plan.notes, [])
     strictEqual(plan.source, 'definition')
     deepStrictEqual(specOf(plan, 'size'), { t: 'integer', min: 2, max: 9, step: 3 })
+    deepStrictEqual(specOf(plan, 'half'), { t: 'integer', step: 5 })
     deepStrictEqual(specOf(plan, 'ratio'), { t: 'number', min: 0, xmin: true, max: 1, xmax: true })
     deepStrictEqual(specOf(plan, 'old'), { t: 'number', min: 0, max: 1, xmin: true, xmax: true })
     deepStrictEqual(specOf(plan, 'code'), {
@@ -359,6 +361,14 @@ describe('ts-seed: the plan', () => {
     deepStrictEqual(idOf({ type: 'integer' })[0], { field: 'id', as: 'integer', base: 0 })
     deepStrictEqual(idOf({ type: 'integer', minimum: 1000 })[0], { field: 'id', as: 'integer', base: 999 })
     deepStrictEqual(idOf({ type: 'integer', minimum: 10, exclusiveMinimum: true })[0], { field: 'id', as: 'integer', base: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: -5 })[0], { field: 'id', as: 'integer', base: 0 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: 10, multipleOf: 10 })[0], { field: 'id', as: 'integer', base: 0, step: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: 15, multipleOf: 10 })[0], { field: 'id', as: 'integer', base: 10, step: 10 })
+    deepStrictEqual(idOf({ type: 'integer', minimum: -100, maximum: -1 })[0], { field: 'id', as: 'integer', base: 0, step: -1 })
+    deepStrictEqual(idOf({ type: 'number', maximum: -1, multipleOf: 2.5 })[0], { field: 'id', as: 'integer', base: 0, step: -5 })
+    const [fraction, said] = idOf({ type: 'number', minimum: 0.2, maximum: 0.8 })
+    deepStrictEqual(fraction, { field: 'id', as: 'spec' })
+    deepStrictEqual(said.map((n) => n.note), ['no numbered id meets the schema, so ids are drawn from it and can repeat'])
     deepStrictEqual(idOf({ type: 'string', pattern: '^BK-[0-9]{6}$' })[0], { field: 'id', as: 'text', lead: 'BK-', width: 6 })
     deepStrictEqual(idOf({ type: 'string', pattern: '^[A-Za-z0-9_.-]+$' })[0], { field: 'id', as: 'text', lead: 'thing-', width: 4 })
     deepStrictEqual(idOf({ type: 'string', maxLength: 8 })[0], { field: 'id', as: 'text', lead: 'thi-', width: 4 })
@@ -777,6 +787,8 @@ describe('ts-seed: from the definitions', () => {
       ok(shop.records('author').some((a) => a.id === book.author_id), 'a book by no author')
       ok(book.created_at < '2026', 'created in the early window')
       const [review] = shop.records('review')
+      deepStrictEqual(shop.records('review').map((r) => r.id), [1000, 1010, 1020, 1030, 1040])
+      ok(apis.bookshop.files['README.md'].includes('| `review` | `Review` | `id`: `1000` |'), 'the README names another first review id')
       ok(/^[A-Z].* .*\.$/.test(review.body), review.body)
       ok(/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(review.reviewer.name), review.reviewer.name)
       strictEqual(Object.prototype.hasOwnProperty.call(review.reviewer, 'secret'), false)
@@ -1000,6 +1012,38 @@ describe('ts-seed: from the definitions', () => {
         ok(0.1 <= r.count && r.count <= 0.5 && places(r.count, 1), 'count ' + r.count)
       }
       deepStrictEqual(seed.misses(), [])
+    })
+
+
+    test('a number id keeps to its step and its bounds, and an id past them is reported', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const seeded = (id, count) => {
+        const schema = { type: 'object', required: ['id', 'n'], properties: { id, n: { type: 'integer', multipleOf: 2.5 } } }
+        const seed = makeSeedFor(thingPlan(schema), { count })
+        for (const record of seed.records('thing')) {
+          deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+        }
+        return seed
+      }
+
+      deepStrictEqual(seeded({ type: 'integer', minimum: 10, multipleOf: 10 }, 3).records('thing').map((r) => r.id), [10, 20, 30])
+      const below = seeded({ type: 'integer', minimum: -100, maximum: -1 }, 100)
+      deepStrictEqual(below.records('thing').slice(0, 3).map((r) => r.id), [-1, -2, -3])
+      deepStrictEqual(below.misses(), [])
+      strictEqual(below.id('thing', 101), -101)
+      deepStrictEqual(below.misses().map((m) => [m.entity, m.n, m.path]), [['thing', 101, 'id']])
+
+      const text = makeSeedFor({
+        ...planOf([]),
+        entity: {
+          t: {
+            name: 't', source: 'definition', parents: [], id: { field: 'id', as: 'text', lead: 'T', width: 1 },
+            fields: [{ n: 'id', r: true, s: { t: 'string', re: '^T[0-9]$' } }],
+          },
+        },
+      })
+      deepStrictEqual([text.id('t', 9), text.id('t', 10)], ['T9', 'T10'])
+      deepStrictEqual(text.misses().map((m) => [m.entity, m.n, m.path]), [['t', 10, 'id']])
     })
   })
 

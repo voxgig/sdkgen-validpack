@@ -69,7 +69,8 @@ seed.record('moon', 7)
   points at a record that exists, so it moves when the number of records its
   target starts with changes.
 - **An id is valid while its number fits.** Where a pattern fixes the digits,
-  as `^BK-[0-9]{6}$` does, record 1,000,000 has no valid id.
+  as `^BK-[0-9]{6}$` does, record 1,000,000 has no valid id. A number id runs
+  out at its bounds the same way. Either is reported in `seed.misses()`.
 
 ### Without the definition
 
