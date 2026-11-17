@@ -1,7 +1,7 @@
 {
   "name": "@voxgig/sdkgen-validpack",
   "version": "0.0.1",
-  "description": "Validation targets for the Voxgig SDK Generator: seeded test data for an API.",
+  "description": "Validation targets for the Voxgig SDK Generator: seeded test data for an API, and a mock server that serves it.",
   "private": true,
   "type": "commonjs",
   "license": "MIT",

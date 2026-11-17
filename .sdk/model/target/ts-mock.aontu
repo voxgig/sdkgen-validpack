@@ -1,0 +1,39 @@
+# A local HTTP mock of the API, in TypeScript on node:http. Its records come
+# from the library the ts-seed target generates, so a project needs both.
+
+main: kit: target: 'ts-mock': {
+
+  title: 'Local mock server'
+  ext: ts
+  comment: line: "//"
+  module: name: '$$name$$'
+  base: 'BASE'
+  srcfeature: false
+
+  phase: {
+    entity:     { active: false }
+    feature:    { active: false }
+    readme:     { active: false }
+    agentguide: { active: false }
+    test:       { active: false }
+  }
+
+  deps: &: {
+    kind: *'prod' | string
+  }
+
+  deps: {
+    'typescript': { active: true, version: '^5.9.3', kind: dev }
+  }
+}
+
+
+main: kit: feature: &: target: 'ts-mock': deps: &: {
+  kind: *'prod' | string
+}
+
+
+# Nothing to publish to a registry: a release is a git tag cut at the root.
+main: kit: target: 'ts-mock': publish: {
+  tag: { via: 'root' }
+}

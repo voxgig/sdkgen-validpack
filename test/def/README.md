@@ -10,6 +10,7 @@
 The first three are copies. Change them where they come from, then copy
 again. `bookshop` is edited here.
 
-The suite picks up every `.yaml` file in this folder. Its `SCHEMAS` table
-names, by hand, the schema each entity's records follow, and a test fails
-when a definition here has no row in it.
+The suite picks up every `.yaml` file in this folder. The seed suite's
+`SCHEMAS` table names, by hand, the schema each entity's records follow, and
+the mock suite's `PORTS` table the port its first server names. A test fails
+when a definition here has no row in either.

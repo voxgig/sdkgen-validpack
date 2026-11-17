@@ -1285,7 +1285,8 @@ describe('ts-seed: the package', () => {
 
       const model = Fs.readFileSync(Path.join(consumer.sdk, 'model', 'target', TARGET + '.aontu'), 'utf8')
       ok(model.includes("package: '@voxgig/sdkgen-validpack'"), 'no provenance in the installed model')
-      for (const file of ['src/cmp/' + TARGET + '/Main_' + TARGET + '.ts', 'tm/' + TARGET + '/src/engine.ts']) {
+      for (const file of ['src/cmp/' + TARGET + '/Main_' + TARGET + '.ts', 'tm/' + TARGET + '/src/engine.ts',
+        'src/cmp/ts-mock/Main_ts-mock.ts', 'tm/ts-mock/src/mock.ts']) {
         ok(consumer.files().includes(file), file + ' was not installed')
       }
 
@@ -1293,7 +1294,7 @@ describe('ts-seed: the package', () => {
       strictEqual(doctor.status, 0, doctor.stdout + doctor.stderr)
 
       const listed = cli('package', 'list')
-      ok(/@voxgig\/sdkgen-validpack@[0-9.]+: target `ts-seed`/.test(listed.stdout), listed.stdout)
+      ok(/@voxgig\/sdkgen-validpack@[0-9.]+: target `ts-mock`, target `ts-seed`/.test(listed.stdout), listed.stdout)
     }
     finally {
       Fs.rmSync(link, { force: true })

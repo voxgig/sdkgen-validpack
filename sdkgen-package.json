@@ -9,10 +9,12 @@
   },
   "provides": {
     "target": [
+      "ts-mock",
       "ts-seed"
     ]
   },
   "parity": {
+    "ts-mock": "CONSUMER",
     "ts-seed": "CONSUMER"
   }
 }

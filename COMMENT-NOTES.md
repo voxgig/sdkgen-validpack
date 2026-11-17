@@ -67,3 +67,43 @@ Sources: [plan](.sdk/src/cmp/ts-seed/Plan_ts-seed.ts),
 [file writer](.sdk/src/cmp/ts-seed/Main_ts-seed.ts),
 [engine](.sdk/tm/ts-seed/src/engine.ts),
 [suite support](test/support.js), [checker](test/check.js).
+
+
+## The mock server
+
+The routes are data and the engine is code, as in the seed library. The
+component reads the model and the definition once, at generation, and writes
+each route's method, path, parameters, status, envelope and request shape.
+The engine, which is the same for every API, reads them when it starts.
+
+What a path parameter means is decided at run time, from the seed library's
+plan: the record's own id where the model renames the parameter to the id,
+and a parent's id where the plan has a parent of that parameter's name. The
+plan is what made each record's parents, so the store and the routes cannot
+disagree about which record sits under which.
+
+The seed library is loaded by a path, when the mock starts, not imported.
+The mock compiles without it, its `package.json` names no dependency, and a
+mock built before its seed library says what is missing rather than failing
+to compile. The types it needs from the seed library, and from Node, are
+declared in the templates, so that the mock compiles with `tsc` alone.
+
+A create gives the record the seed library's id for the next record number,
+and takes each required field the body leaves out from the seed library's
+record of that number. So the same seed and the same requests make the same
+records, and a created record reads like a seeded one. The server sends no
+`Date` header, so the same requests get the same bytes back.
+
+A route that names a parent the store does not hold is a 404, a list
+included, so that an SDK that sends the wrong parent finds out. A reset
+builds the new store before it replaces the old one, so a reset the seed
+library refuses changes nothing.
+
+The route is found before the credential is checked: a path no route serves
+is a 404 with or without a credential, and a control route needs none.
+
+Sources: [routes](.sdk/src/cmp/ts-mock/Routes_ts-mock.ts),
+[file writer](.sdk/src/cmp/ts-mock/Main_ts-mock.ts),
+[engine](.sdk/tm/ts-mock/src/mock.ts),
+[entry](.sdk/tm/ts-mock/src/index.ts), [command](.sdk/tm/ts-mock/src/server.ts),
+[suite](test/mock.test.js).
