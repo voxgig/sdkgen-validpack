@@ -90,7 +90,8 @@ declared in the templates, so that the mock compiles with `tsc` alone.
 
 A create gives the record the seed library's id for the next record number,
 and takes each required field the body leaves out from the seed library's
-record of that number. So the same seed and the same requests make the same
+record of that number. A number whose id a record already holds, as one
+created by a chosen id can, is passed over. So the same seed and the same requests make the same
 records, and a created record reads like a seeded one. The server sends no
 `Date` header, so the same requests get the same bytes back.
 

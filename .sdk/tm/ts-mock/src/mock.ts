@@ -203,17 +203,18 @@ function segments(path: string): Seg[] {
 }
 
 
+// Matched as sent, so that a value may hold an encoded slash, and decoded once matched.
 function matches(segs: Seg[], parts: string[], into: { [name: string]: string }): boolean {
   if (segs.length !== parts.length) return false
   for (let i = 0; i < segs.length; i++) {
     const seg = segs[i]
     if ('lit' in seg) {
-      if (seg.lit !== parts[i]) return false
+      if (seg.lit !== decode(parts[i])) return false
       continue
     }
     const m = seg.re.exec(parts[i])
     if (null == m) return false
-    seg.names.forEach((name, j) => put(into, name, m[j + 1]))
+    seg.names.forEach((name, j) => put(into, name, decode(m[j + 1])))
   }
   return true
 }
@@ -230,7 +231,7 @@ function split(url: string): { parts: string[], path: string, query: Query } {
     const value = eq < 0 ? '' : decode(pair.slice(eq + 1).replace(/\+/g, ' '))
     put(query, key, own(query, key) ? ([] as string[]).concat(query[key], value) : value)
   }
-  return { parts: path.split('/').filter((part) => '' !== part).map(decode), path, query }
+  return { parts: path.split('/').filter((part) => '' !== part), path, query }
 }
 
 
@@ -269,6 +270,34 @@ function setAt(row: Row, at: string[], value: Json): void {
 function same(value: Json | undefined, wanted: string): boolean {
   if (undefined === value) return false
   return wanted === (isRow(value) || Array.isArray(value) ? JSON.stringify(value) : String(value))
+}
+
+
+function held(value: Json | undefined, key: string): Json | undefined {
+  return isRow(value) && own(value, key) ? value[key] : undefined
+}
+
+
+// What a body may set, at any depth: a read-only value it sends is dropped, and the one held stays.
+function writable(value: Json, kept: Json | undefined, spec: SpecLike): Json {
+  if ('object' === spec.t && undefined !== spec.fields && isRow(value)) {
+    const out: Row = {}
+    for (const key of Object.keys(value)) {
+      const field = spec.fields.find((f) => f.n === key)
+      if (true === field?.ro) continue
+      put(out, key, undefined === field ? value[key] : writable(value[key], held(kept, key), field.s))
+    }
+    for (const f of spec.fields) {
+      const stays = held(kept, f.n)
+      if (true === f.ro && undefined !== stays) put(out, f.n, copy(stays))
+    }
+    return out
+  }
+  if ('array' === spec.t && undefined !== spec.items && Array.isArray(value)) {
+    const items = spec.items
+    return value.map((item, i) => writable(item, Array.isArray(kept) ? kept[i] : undefined, items))
+  }
+  return value
 }
 
 
@@ -400,11 +429,15 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
   const create = (route: Route, want: Want, given: Row): Answer => {
     const ent = entityOf(route.entity)
     const entries = store[route.entity]
-    if (undefined !== want.id && entries.some((e) => String(e.id) === want.id)) {
+    const taken = (id: string | number | null): boolean => null !== id && entries.some((e) => String(e.id) === String(id))
+    if (undefined !== want.id && taken(want.id)) {
       return { status: 409, body: fail('conflict', route.entity + ' ' + want.id + ' already exists') }
     }
 
-    const n = next[route.entity]
+    let n = next[route.entity]
+    for (let tries = 0; undefined === want.id && taken(seed.id(route.entity, n)); tries++, n++) {
+      if (entries.length < tries) return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+    }
     put(next, route.entity, n + 1)
     const seeded = seed.record(route.entity, n)
     const id = undefined === want.id ? seed.id(route.entity, n) : typedId(route.entity, want.id)
@@ -413,7 +446,7 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const record: Row = {}
     for (const f of ent.fields) {
       if (undefined !== ent.id && f.n === ent.id.field && null !== id) put(record, f.n, id)
-      else if (own(given, f.n) && true !== f.ro) put(record, f.n, given[f.n])
+      else if (own(given, f.n) && true !== f.ro) put(record, f.n, writable(given[f.n], held(seeded, f.n), f.s))
       else if ((f.r || true === f.ro) && own(seeded, f.n)) put(record, f.n, seeded[f.n])
     }
     for (const key of Object.keys(given)) if (!known.has(key)) put(record, key, given[key])
@@ -439,7 +472,8 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const readOnly = new Set(ent.fields.filter((f) => true === f.ro).map((f) => f.n))
     for (const key of Object.keys(given)) {
       if ((undefined !== ent.id && key === ent.id.field) || readOnly.has(key)) continue
-      put(entry.record, key, given[key])
+      const field = ent.fields.find((f) => f.n === key)
+      put(entry.record, key, undefined === field ? given[key] : writable(given[key], held(entry.record, key), field.s))
     }
     for (const link of ent.parents) {
       if (undefined === link.field) continue
@@ -596,9 +630,10 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     const values: { [name: string]: string } = {}
     const under = matches(prefix, parts.slice(0, prefix.length), values) ? parts.slice(prefix.length) : undefined
     for (const rest of [parts, under]) {
-      if (undefined !== rest && 1 === rest.length && CONTROL.includes(rest[0])) {
+      const name = undefined !== rest && 1 === rest.length ? decode(rest[0]) : ''
+      if (CONTROL.includes(name)) {
         const answer = undefined === text ? { status: 413, body: fail('payload_too_large', 'the body is too large') } :
-          control(rest[0], method, text)
+          control(name, method, text)
         return { answer, record: false }
       }
     }

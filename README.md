@@ -165,8 +165,9 @@ path parameters the definition names.
   and any other query parameter is ignored.
 - **`load`** answers the record its path names.
 - **`create`** takes the body as the record. The record's id is the seed
-  library's id for the next record number, and each required field the body
-  leaves out comes from the seed library's record of that number. A record
+  library's id for the next record number whose id no record holds, and each
+  required field the body leaves out comes from the seed library's record of
+  that number. A record
   created on a parent's path sits under that parent, and a field of the record
   that names its parent holds that parent's id. A create whose path names the
   new record's id takes that id, or answers 409 where a record holds it.
@@ -177,11 +178,12 @@ path parameters the definition names.
   a JSON 404: `{ "code": "not_found", "message": "..." }`.
 - **An action**, a route the model marks with `$action`, answers the record
   it names, unchanged: the definition does not say what an action does.
-- **A field the definition marks read-only** is the mock's to set, so a body
-  cannot change it, and a write-only field is never sent back.
+- **A field the definition marks read-only**, at any depth, is the mock's to
+  set, so a body cannot change it, and a write-only field is never sent back.
 
-A path parameter that is neither the record's id nor a parent's id, such as a
-`{year}`, is accepted and ignored. A body that is not JSON, or holds no
+A path parameter is matched as it is sent and decoded after, so an id may
+hold a `/` sent as `%2F`. One that is neither the record's id nor a parent's
+id, such as a `{year}`, is accepted and ignored. A body that is not JSON, or holds no
 record, is a 400. A method that no route on the path takes is a 405, and a
 body over a mebibyte is a 413.
 

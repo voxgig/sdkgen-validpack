@@ -159,10 +159,10 @@ Each entity's store starts as the seed library's records. A list holds the
 records under the parent its path names, and a query parameter that names a
 field keeps the records whose field has that value. A load, update, patch or
 remove finds its record by the path's id and parents, or answers 404. A create
-takes its id from the seed library's next record number, and fills each
-required field the body leaves out from that record. An update or a patch
-merges the body into the record. A field the definition marks read-only is the
-mock's to set, and a write-only field is never sent back.
+takes its id from the seed library's next record number whose id no record
+holds, and fills each required field the body leaves out from that record. An update or a patch
+merges the body into the record. A field the definition marks read-only, at any
+depth, is the mock's to set, and a write-only field is never sent back.
 
 ${auth}
 
