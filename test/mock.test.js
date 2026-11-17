@@ -1269,6 +1269,31 @@ describe('ts-mock: from the definitions', () => {
     })
 
 
+    test('a segment of literal text and a parameter matches its text however it is sent', async () => {
+      const t = thing(apis.solardemo)
+      const load = (path) => ({ ...t.routes.routes.find((r) => 'load' === r.op), path })
+      const routes = { ...t.routes, routes: [...t.routes.routes, load('/look/pre-{id}'), load('/caf\u00e9/{id}-x')] }
+      const s = await serve(apis.solardemo, {}, routes, t.library)
+      try {
+        for (const id of ['b', 'a/b']) strictEqual((await s.call('PUT', '/thing/' + encodeURIComponent(id), { body: {} })).status, 201)
+        for (const [path, id] of [
+          ['/look/pre-b', 'b'], ['/look/%70re-b', 'b'], ['/look/pre%2db', 'b'], ['/look/pre%2Db', 'b'],
+          ['/look/pre-a%2Fb', 'a/b'], ['/look/%70%72%65%2Da%2fb', 'a/b'],
+          ['/caf%C3%A9/b-x', 'b'], ['/caf%c3%a9/a%2Fb-x', 'a/b'], ['/caf\u00e9/b-x', 'b'],
+        ]) {
+          const res = await s.call('GET', path)
+          deepStrictEqual([res.status, res.body.id], [200, id], path)
+        }
+        for (const path of ['/look/Pre-b', '/look/%50re-b', '/look/pre-', '/look/%70re', '/caf%C3%89/b-x']) {
+          strictEqual((await s.call('GET', path)).status, 404, path)
+        }
+      }
+      finally {
+        await s.close()
+      }
+    })
+
+
     test('a created id is one no record holds, after a create by a chosen id too', async () => {
       const t = thing(apis.solardemo)
       const s = await serve(apis.solardemo, { count: 1 }, t.routes, t.library)
@@ -1301,6 +1326,45 @@ describe('ts-mock: from the definitions', () => {
       }
       finally {
         await o.close()
+      }
+    })
+
+
+    test('a drawn id is searched for well past the store, and a search that found none is not run again', async () => {
+      const t = thing(apis.solardemo, '', { t: 'enum', values: ['a', 'b'] })
+      const tried = []
+      const library = {
+        makeSeed: (options) => {
+          const made = t.library.makeSeed(options)
+          return { ...made, id: (entity, n) => { tried.push(n); return made.id(entity, n) } }
+        },
+      }
+      const searched = async () => {
+        tried.length = 0
+        const res = await s.call('POST', '/thing', { body: {} })
+        const numbers = [...new Set(tried)]
+        return { res, numbers }
+      }
+      const s = await serve(apis.solardemo, { seed: 4, count: 1 }, t.routes, library)
+      try {
+        deepStrictEqual(s.mock.records('thing').map((r) => r.id), ['b'])
+
+        const found = await searched()
+        deepStrictEqual([found.res.status, found.res.body.id], [201, 'a'])
+        deepStrictEqual(found.numbers, [2, 3, 4, 5, 6, 7, 8, 9])
+
+        const first = await searched()
+        deepStrictEqual([first.res.status, first.res.body], [409, { code: 'conflict', message: 'no thing id is free' }])
+        strictEqual(first.numbers[0], 10)
+        ok(1000 < first.numbers.length, 'only ' + first.numbers.length + ' numbers searched')
+
+        const second = await searched()
+        strictEqual(second.res.status, 409)
+        strictEqual(second.numbers[0], first.numbers[first.numbers.length - 1] + 1)
+        deepStrictEqual(s.mock.records('thing').map((r) => r.id), ['b', 'a'])
+      }
+      finally {
+        await s.close()
       }
     })
 

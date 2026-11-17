@@ -139,6 +139,9 @@ const MAX_BODY = 1048576
 
 const MAX_RECORDED = 10000
 
+// A drawn id can repeat, so a free one is searched for this far past the store's size.
+const ID_SEARCH = 1024
+
 const REDACTED = '[redacted]'
 
 const BODYLESS = [204, 205, 304]
@@ -188,13 +191,33 @@ function decode(text: string): string {
 }
 
 
+function utf8(code: number): number[] {
+  if (code < 0x80) return [code]
+  if (code < 0x800) return [0xc0 | (code >> 6), 0x80 | (code & 63)]
+  if (code < 0x10000) return [0xe0 | (code >> 12), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63)]
+  return [0xf0 | (code >> 18), 0x80 | ((code >> 12) & 63), 0x80 | ((code >> 6) & 63), 0x80 | (code & 63)]
+}
+
+
+// A segment is matched as sent, so each literal character is itself or its percent-encoded bytes.
+function sent(text: string): string {
+  let out = ''
+  for (const ch of text) {
+    const bytes = utf8(ch.codePointAt(0) as number)
+      .map((b) => '%' + b.toString(16).padStart(2, '0').replace(/[a-f]/g, (h) => '[' + h + h.toUpperCase() + ']'))
+    out += '(?:' + ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|' + bytes.join('') + ')'
+  }
+  return out
+}
+
+
 function segments(path: string): Seg[] {
   return path.split('/').filter((part) => '' !== part).map((part): Seg => {
     if (!part.includes('{')) return { lit: part }
     const names: string[] = []
     const source = part.split(/(\{[^{}]+\})/).map((bit) => {
       const m = /^\{([^{}]+)\}$/.exec(bit)
-      if (null == m) return bit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      if (null == m) return sent(bit)
       names.push(m[1])
       return '([^/]+?)'
     }).join('')
@@ -435,8 +458,13 @@ export function makeMockFor(routes: Routes, library: SeedLibrary, options: MockO
     }
 
     let n = next[route.entity]
-    for (let tries = 0; undefined === want.id && taken(seed.id(route.entity, n)); tries++, n++) {
-      if (entries.length < tries) return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+    if (undefined === want.id) {
+      const last = n + entries.length + ID_SEARCH
+      while (n <= last && taken(seed.id(route.entity, n))) n++
+      if (last < n) {
+        put(next, route.entity, n)
+        return { status: 409, body: fail('conflict', 'no ' + route.entity + ' id is free') }
+      }
     }
     put(next, route.entity, n + 1)
     const seeded = seed.record(route.entity, n)
