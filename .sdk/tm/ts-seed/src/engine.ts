@@ -716,6 +716,7 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
   const arrayOf = (spec: Extract<Spec, { t: 'array' }>, at: At): Json[] => {
     const lo = spec.min ?? Math.min(1, spec.max ?? 1)
     const hi = Math.max(lo, spec.max ?? lo + 2)
+    if (undefined !== spec.max && spec.max < lo) miss(at, 'no length lies within the bounds')
     const draw = stream(at.base + '\n' + at.path + '\n#')
     const length = lo + below(draw, hi - lo + 1)
 
@@ -754,8 +755,9 @@ export function makeSeedFor(plan: Plan, options: SeedOptions = {}): Seed {
   }
 
   const mapOf = (spec: Extract<Spec, { t: 'map' }>, at: At): Row => {
-    const lo = spec.min ?? 1
+    const lo = spec.min ?? Math.min(1, spec.max ?? 1)
     const hi = Math.max(lo, spec.max ?? Math.max(lo, 2))
+    if (undefined !== spec.max && spec.max < lo) miss(at, 'no size lies within the bounds')
     const draw = stream(at.base + '\n' + at.path + '\n#')
     const length = lo + below(draw, hi - lo + 1)
     const out: Row = {}

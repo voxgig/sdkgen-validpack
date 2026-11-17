@@ -1109,6 +1109,29 @@ describe('ts-seed: from the definitions', () => {
       strictEqual(JSON.stringify(seed.record('e', 1)), was)
       strictEqual(JSON.stringify(seed.plan), plan)
     })
+
+
+    test('a map with no room for a property is empty, and bounds that cross are reported', () => {
+      const { makeSeedFor } = load(apis.solardemo.dir)
+      const schema = {
+        type: 'object', required: ['id', 'bag'],
+        properties: { id: { type: 'string' }, bag: { type: 'object', additionalProperties: { type: 'string' }, maxProperties: 0 } },
+      }
+      const seed = makeSeedFor(thingPlan(schema), { count: 20 })
+      for (const record of seed.records('thing')) {
+        deepStrictEqual(record.bag, {})
+        deepStrictEqual(check(record, schema, {}), [], JSON.stringify(record))
+      }
+      deepStrictEqual(seed.misses(), [])
+
+      const crossed = makeSeedFor(planOf([
+        { n: 'list', r: true, s: { t: 'array', items: { t: 'boolean' }, min: 3, max: 1 } },
+        { n: 'bag', r: true, s: { t: 'map', values: { t: 'boolean' }, min: 3, max: 1 } },
+      ]))
+      crossed.record('e', 1)
+      deepStrictEqual(crossed.misses().map((m) => [m.path, m.why]),
+        [['list', 'no length lies within the bounds'], ['bag', 'no size lies within the bounds']])
+    })
   })
 
 
